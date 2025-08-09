@@ -3,6 +3,7 @@ import csv
 import uuid
 import asyncio
 import logging
+import time
 from enum import Enum
 from typing import Annotated
 from pydantic import Field, BaseModel, AnyUrl
@@ -102,6 +103,9 @@ async def youtube_tool(
     try:
         # Convert URL to string format
         url_str = str(url)
+        
+        logger.info(f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}")
+        start_time = time.time()
 
         response = client.models.generate_content(
             model=GeminiModel.FLASH_LITE.value,
@@ -114,12 +118,21 @@ async def youtube_tool(
                     types.Part(text=prompt),
                 ]
             ),
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(
+                    thinking_budget=0
+                )  # Disables thinking
+            ),
         )
+        
+        elapsed_time = time.time() - start_time
+        logger.info(f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds")
         logger.info(f"Gemini response:\n {response.text}\n")
         return response.text
 
     except Exception as e:
-        logger.error(f"Error transcribing with Gemini: {e}")
+        elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}")
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
@@ -133,7 +146,7 @@ async def youtube_tool(
 async def main():
     """Initialize and run the MCP server"""
 
-    print(f"🚀 Starting YouTube MCP server (Gemini) on http://0.0.0.0:7001")
+    print(f"[{time.strftime('%H:%M:%S')}] 🚀 Starting YouTube MCP server (Gemini) on http://0.0.0.0:7001")
     await mcp.run_async("streamable-http", host="0.0.0.0", port=7001)
 
 
