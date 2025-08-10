@@ -1,11 +1,9 @@
 import os
-import csv
+import random
 import re
-import uuid
 import asyncio
 import logging
 import time
-import json
 import aiohttp
 import yt_dlp
 from enum import Enum
@@ -40,6 +38,7 @@ GEMINI_API_KEYS = [
     os.environ.get("GEMINI_API_KEY_1"),
     os.environ.get("GEMINI_API_KEY_2"),
     os.environ.get("GEMINI_API_KEY_3"),
+    os.environ.get("GEMINI_API_KEY_4"),
 ]
 
 # Filter out None values and ensure we have at least one key
@@ -49,10 +48,15 @@ assert (
 ), "At least GEMINI_API_KEY must be set in your environment"
 
 # Primary client for single API calls
-client = genai.Client(api_key=GEMINI_API_KEYS[1])
+client = genai.Client(
+    api_key=GEMINI_API_KEYS[random.randint(0, len(GEMINI_API_KEYS) - 1)]
+)
 
 # Create clients for each API key for parallel processing
 gemini_clients = [genai.Client(api_key=key) for key in GEMINI_API_KEYS]
+
+# Configuration for parallel processing
+PARALLEL_SEGMENTS = 3  # Number of parallel segments to process videos
 
 
 class GeminiModel(Enum):
@@ -466,7 +470,7 @@ async def make_parallel_gemini_calls(
             # Add unique timestamp to track when each call actually starts
             unique_start_time = time.time()
             logger.info(
-                f"[{time.strftime('%H:%M:%S')}.{int((unique_start_time % 1) * 1000):03d}] STARTING parallel Gemini call {client_index + 1}/3 with offsets {offset_start}-{offset_end}"
+                f"[{time.strftime('%H:%M:%S')}.{int((unique_start_time % 1) * 1000):03d}] STARTING parallel Gemini call {client_index + 1}/{PARALLEL_SEGMENTS} with offsets {offset_start}-{offset_end}"
             )
 
             # Run the synchronous API call in a thread pool to achieve true parallelism
@@ -486,7 +490,7 @@ async def make_parallel_gemini_calls(
                                 ),
                             ),
                             types.Part(
-                                text=f"{prompt} (Segment {client_index + 1}/3: {offset_start} to {offset_end})"
+                                text=f"{prompt} (Segment {client_index + 1}/{PARALLEL_SEGMENTS}: {offset_start} to {offset_end})"
                             ),
                         ]
                     ),
@@ -499,7 +503,7 @@ async def make_parallel_gemini_calls(
 
             elapsed_time = time.time() - unique_start_time
             logger.info(
-                f"[{time.strftime('%H:%M:%S')}.{int((time.time() % 1) * 1000):03d}] COMPLETED parallel Gemini call {client_index + 1}/3 in {elapsed_time:.2f} seconds"
+                f"[{time.strftime('%H:%M:%S')}.{int((time.time() % 1) * 1000):03d}] COMPLETED parallel Gemini call {client_index + 1}/{PARALLEL_SEGMENTS} in {elapsed_time:.2f} seconds"
             )
 
             return f"=== SEGMENT {client_index + 1} ({offset_start} to {offset_end}) ===\n{response.text}"
@@ -510,28 +514,46 @@ async def make_parallel_gemini_calls(
             )
             return f"=== SEGMENT {client_index + 1} ({offset_start} to {offset_end}) ===\nError: {str(e)}"
 
-    # Calculate time segments for 3 parallel calls
-    segment_duration = video_length // 3
+    # Calculate time segments for parallel calls
+    segment_duration = video_length // PARALLEL_SEGMENTS
 
     # Define time offsets for each segment
-    segments = [
-        ("0s", f"{segment_duration}s"),
-        (f"{segment_duration}s", f"{segment_duration * 2}s"),
-        (f"{segment_duration * 2}s", f"{video_length}s"),
-    ]
+    segments = []
+    for i in range(PARALLEL_SEGMENTS):
+        start_time = i * segment_duration
+        end_time = (
+            (i + 1) * segment_duration if i < PARALLEL_SEGMENTS - 1 else video_length
+        )
+        segments.append((f"{start_time}s", f"{end_time}s"))
 
-    # Use available clients (cycle through them if we have fewer than 3 keys)
+    # Randomly select clients from available ones
     num_clients = len(gemini_clients)
+    if num_clients >= PARALLEL_SEGMENTS:
+        selected_clients = random.sample(gemini_clients, PARALLEL_SEGMENTS)
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Randomly selected {PARALLEL_SEGMENTS} API keys out of {num_clients} available"
+        )
+    else:
+        selected_clients = gemini_clients
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Using all {num_clients} available API keys (fewer than {PARALLEL_SEGMENTS})"
+        )
 
     logger.info(
-        f"[{time.strftime('%H:%M:%S')}] About to start 3 parallel Gemini API calls using {num_clients} API key(s)"
+        f"[{time.strftime('%H:%M:%S')}] About to start {PARALLEL_SEGMENTS} parallel Gemini API calls using randomly selected clients"
     )
 
     # Create coroutines first, then convert to tasks
     coroutines = []
-    for i in range(3):
-        client_index = i % num_clients  # Cycle through available clients
-        client_to_use = gemini_clients[client_index]
+    for i in range(PARALLEL_SEGMENTS):
+        if num_clients >= PARALLEL_SEGMENTS:
+            # Use the randomly selected clients
+            client_to_use = selected_clients[i]
+        else:
+            # Cycle through available clients if we have fewer than PARALLEL_SEGMENTS
+            client_index = i % num_clients
+            client_to_use = gemini_clients[client_index]
+
         offset_start, offset_end = segments[i]
 
         # Create coroutine
@@ -559,7 +581,7 @@ async def make_parallel_gemini_calls(
         ]
     )
 
-    return f"VIDEO TRANSCRIPTION (3 Parallel Segments):\n\n{combined_result}"
+    return f"VIDEO TRANSCRIPTION ({PARALLEL_SEGMENTS} Parallel Segments):\n\n{combined_result}"
 
 
 # Initialize FastMCP server with auth
@@ -652,7 +674,7 @@ async def youtube_tool(
 
         elif video_length > 600 and video_length <= 1800:
             logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds (> 600), using 3 parallel Gemini API calls."
+                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds (> 600), using {PARALLEL_SEGMENTS} parallel Gemini API calls."
             )
 
             # Use parallel API calls for better processing
@@ -705,15 +727,15 @@ async def youtube_tool(
     #         # Return with explicit formatting to help Puch AI understand this is content to display
     #         return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
-    # except Exception as e:
-    #     logger.error(f"[{time.strftime('%H:%M:%S')}] Error processing the video: {e}")
-    #     raise McpError(
-    #         ErrorData(
-    #             code=INTERNAL_ERROR,
-    #             message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
-    #             + str(e),
-    #         )
-    #     )
+    except Exception as e:
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error processing the video: {e}")
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
+                + str(e),
+            )
+        )
     finally:
         logger.info(
             f"[{time.strftime('%H:%M:%S')}] Finished YouTube Tool for URL: {url} in {time.time() - tool_start_time:.2f} seconds"
