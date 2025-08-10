@@ -1,9 +1,12 @@
 import os
 import csv
+import re
 import uuid
 import asyncio
 import logging
 import time
+import json
+import aiohttp
 from enum import Enum
 from typing import Annotated
 from pydantic import Field, BaseModel, AnyUrl
@@ -15,6 +18,7 @@ from mcp.types import TextContent, ImageContent, INVALID_PARAMS, INTERNAL_ERROR
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from datetime import timedelta
 
 load_dotenv()
 
@@ -24,10 +28,13 @@ logger = logging.getLogger(__name__)
 # Get auth credentials for Puch
 TOKEN = os.environ.get("AUTH_TOKEN_2")
 MY_NUMBER = os.environ.get("MY_NUMBER")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 assert TOKEN is not None, "Please set AUTH_TOKEN in your .env file"
 assert MY_NUMBER is not None, "Please set MY_NUMBER in your .env file"
+assert GOOGLE_API_KEY is not None, "Please set GOOGLE_API_KEY in your .env file"
 assert "GEMINI_API_KEY" in os.environ, "Please set GEMINI_API_KEY in your environment"
+# YouTube API key is optional - only needed for get_video_length tool
 
 # GEMINI_API_KEY must be set in the environment for Gemini API access
 client = genai.Client()
@@ -66,6 +73,70 @@ class RichToolDescription(BaseModel):
     description: str
     use_when: str
     side_effects: str | None = None
+
+
+# this function is taken from https://gist.github.com/rodrigoborgesdeoliveira/987683cfbfcc8d800192da1e73adc486?permalink_comment_id=5097394#gistcomment-5097394
+def get_youtube_video_id_by_url(url):
+    regex = r"^((https?://(?:www\.)?(?:m\.)?youtube\.com))/((?:oembed\?url=https?%3A//(?:www\.)youtube.com/watch\?(?:v%3D)(?P<video_id_1>[\w\-]{10,20})&format=json)|(?:attribution_link\?a=.*watch(?:%3Fv%3D|%3Fv%3D)(?P<video_id_2>[\w\-]{10,20}))(?:%26feature.*))|(https?:)?(\/\/)?((www\.|m\.)?youtube(-nocookie)?\.com\/((watch)?\?(app=desktop&)?(feature=\w*&)?v=|embed\/|v\/|e\/)|youtu\.be\/)(?P<video_id_3>[\w\-]{10,20})"
+    match = re.match(regex, url, re.IGNORECASE)
+    if match:
+        return (
+            match.group("video_id_1")
+            or match.group("video_id_2")
+            or match.group("video_id_3")
+        )
+    else:
+        return None
+
+
+def parse_iso8601_duration(duration_str):
+    """Parse ISO 8601 duration format (PT#H#M#S) to human-readable format and seconds."""
+    # Remove PT prefix
+    duration_str = duration_str.replace("PT", "")
+
+    hours = 0
+    minutes = 0
+    seconds = 0
+
+    # Parse hours
+    if "H" in duration_str:
+        h_index = duration_str.index("H")
+        hours = int(duration_str[:h_index])
+        duration_str = duration_str[h_index + 1:]
+
+    # Parse minutes
+    if "M" in duration_str:
+        m_index = duration_str.index("M")
+        minutes = int(duration_str[:m_index])
+        duration_str = duration_str[m_index + 1:]
+
+    # Parse seconds
+    if "S" in duration_str:
+        s_index = duration_str.index("S")
+        seconds = int(duration_str[:s_index])
+
+    # Calculate total seconds
+    total_seconds = hours * 3600 + minutes * 60 + seconds
+
+    # Format human-readable string
+    parts = []
+    if hours > 0:
+        parts.append(f"{hours} hour{'s' if hours > 1 else ''}")
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
+    if seconds > 0:
+        parts.append(f"{seconds} second{'s' if seconds > 1 else ''}")
+
+    human_readable = ", ".join(parts) if parts else "0 seconds"
+
+    # Format as HH:MM:SS
+    formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+    return {
+        "human_readable": human_readable,
+        "formatted": formatted_time,
+        "total_seconds": total_seconds
+    }
 
 
 # Initialize FastMCP server with auth
@@ -167,6 +238,85 @@ async def youtube_tool(
                 code=INTERNAL_ERROR,
                 message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: "
                 + str(e),
+            )
+        )
+
+
+# --- Tool: Get YouTube Video Length ---
+VideoLengthToolDescription = RichToolDescription(
+    description="""
+    Get the duration/length of a YouTube video using the YouTube Data API v3.
+    Returns the video duration in multiple formats (human-readable, HH:MM:SS, and total seconds).
+    """,
+    use_when="""
+    Use this when you need to know the duration or length of a YouTube video.
+    """,
+    side_effects="Makes an API call to YouTube Data API v3 to fetch video metadata.",
+)
+
+
+@mcp.tool(description=VideoLengthToolDescription.model_dump_json())
+async def get_video_length(
+    url: Annotated[AnyUrl, Field(description="YouTube video URL")],
+) -> str:
+    """Get the duration of a YouTube video."""
+    try:
+        # Check if API key is available
+        if not GOOGLE_API_KEY:
+            return "YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables."
+
+        # Convert URL to string and extract video ID
+        url_str = str(url)
+        video_id = get_youtube_video_id_by_url(url_str)
+
+        if not video_id:
+            return f"Could not extract video ID from URL: {url_str}"
+
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Fetching video length for ID: {video_id}"
+        )
+
+        # Construct the API URL
+        api_url = f"https://www.googleapis.com/youtube/v3/videos?id={video_id}&part=contentDetails&key={GOOGLE_API_KEY}"
+
+        # Make the API request
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"YouTube API error: {error_text}")
+                    return f"Error fetching video data: HTTP {response.status}"
+
+                data = await response.json()
+
+                # Check if video was found
+                if not data.get("items"):
+                    return f"Video not found with ID: {video_id}"
+
+                # Extract duration
+                duration_iso = data["items"][0]["contentDetails"]["duration"]
+                duration_info = parse_iso8601_duration(duration_iso)
+
+                logger.info(
+                    f"[{time.strftime('%H:%M:%S')}] Video duration: {duration_info['formatted']}"
+                )
+
+                # Return formatted response
+                return f"""Video Duration Information:
+
+Video ID: {video_id}
+Duration: {duration_info['formatted']}
+Human Readable: {duration_info['human_readable']}
+Total Seconds: {duration_info['total_seconds']:,}"""
+
+    except Exception as e:
+        logger.error(
+            f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}"
+        )
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"An error occurred while fetching video length: {str(e)}",
             )
         )
 
