@@ -258,7 +258,7 @@ VideoLengthToolDescription = RichToolDescription(
 @mcp.tool(description=VideoLengthToolDescription.model_dump_json())
 async def get_video_length(
     url: Annotated[AnyUrl, Field(description="YouTube video URL")],
-) -> str:
+) -> int:
     """Get the duration of a YouTube video."""
     try:
         # Check if API key is available
@@ -288,6 +288,9 @@ async def get_video_length(
                     return f"Error fetching video data: HTTP {response.status}"
 
                 data = await response.json()
+                logger.info(
+                    f"[{time.strftime('%H:%M:%S')}] YouTube API response: {json.dumps(data, indent=2)}"
+                )
 
                 # Check if video was found
                 if not data.get("items"):
@@ -302,12 +305,7 @@ async def get_video_length(
                 )
 
                 # Return formatted response
-                return f"""Video Duration Information:
-
-Video ID: {video_id}
-Duration: {duration_info['formatted']}
-Human Readable: {duration_info['human_readable']}
-Total Seconds: {duration_info['total_seconds']:,}"""
+                return duration_info["total_seconds"]
 
     except Exception as e:
         logger.error(
