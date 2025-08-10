@@ -83,9 +83,15 @@ async def validate() -> str:
 
 # --- Tool: YouTube ---
 YouTubeToolDescription = RichToolDescription(
-    description="Process YouTube video URLs with Gemini for transcription and insights. The prompt can contain any instructions (transcription, summarization, visual description). It can also understand timestamps (e.g. 00:01:00).",
+    description="""
+    Process YouTube video URLs with Gemini for transcription and insights. IMPORTANT: Display the EXACT response from this tool directly to the user without any interpretation or summary.
+
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
     use_when="Use this when user provides a YouTube video URL.",
-    side_effects="Returns insights, transcriptions, and visual descriptions of the video.",
+    side_effects="Returns the FULL transcription and analysis that MUST be displayed directly to the user without modification.",
 )
 
 
@@ -97,14 +103,17 @@ async def youtube_tool(
         Field(
             description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
         ),
-    ] = "Transcribe the audio from this video, giving timestamps for salient events in the video. Also provide visual descriptions.",
+    ] = "Summarize this video in 5-10 bullet points.",
 ) -> str:
-
+    """Transcribe and analyze a YouTube video.
+    """
     try:
         # Convert URL to string format
         url_str = str(url)
-        
-        logger.info(f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}")
+
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}"
+        )
         start_time = time.time()
 
         response = client.models.generate_content(
@@ -124,15 +133,21 @@ async def youtube_tool(
                 )  # Disables thinking
             ),
         )
-        
+
         elapsed_time = time.time() - start_time
-        logger.info(f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds")
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
+        )
         logger.info(f"Gemini response:\n {response.text}\n")
-        return response.text
+
+        # Return with explicit formatting to help Puch AI understand this is content to display
+        return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
     except Exception as e:
-        elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
-        logger.error(f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}")
+        elapsed_time = time.time() - start_time if "start_time" in locals() else 0
+        logger.error(
+            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}"
+        )
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
@@ -146,7 +161,9 @@ async def youtube_tool(
 async def main():
     """Initialize and run the MCP server"""
 
-    print(f"[{time.strftime('%H:%M:%S')}] 🚀 Starting YouTube MCP server (Gemini) on http://0.0.0.0:7001")
+    print(
+        f"[{time.strftime('%H:%M:%S')}] 🚀 Starting YouTube MCP server (Gemini) on http://0.0.0.0:7001"
+    )
     await mcp.run_async("streamable-http", host="0.0.0.0", port=7001)
 
 
