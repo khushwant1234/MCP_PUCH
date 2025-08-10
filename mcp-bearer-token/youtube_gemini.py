@@ -340,12 +340,6 @@ async def get_video_subtitles(
             description="Language code for subtitles (e.g., 'en' for English, 'es' for Spanish). Use 'auto' to get the first available subtitle."
         ),
     ] = "en",
-    auto_generated: Annotated[
-        bool,
-        Field(
-            description="Whether to use auto-generated subtitles if manual subtitles are not available"
-        ),
-    ] = True,
 ) -> str:
     """Extract subtitles from a YouTube video using yt-dlp Python API."""
     try:
@@ -390,7 +384,7 @@ async def get_video_subtitles(
                     # Get the first available language
                     selected_lang = next(iter(subtitles.keys()))
                     selected_subs = subtitles[selected_lang]
-                elif automatic_captions and auto_generated:
+                elif automatic_captions:
                     # Fall back to auto-generated
                     selected_lang = next(iter(automatic_captions.keys()))
                     selected_subs = automatic_captions[selected_lang]
@@ -400,11 +394,11 @@ async def get_video_subtitles(
                 if language in subtitles:
                     selected_subs = subtitles[language]
                     selected_lang = language
-                elif auto_generated and language in automatic_captions:
+                elif language in automatic_captions:
                     selected_subs = automatic_captions[language]
                     selected_lang = language
                     is_auto = True
-                elif auto_generated:
+                else:
                     # Try variations of the language code
                     for lang_code in automatic_captions:
                         if lang_code.startswith(language):
