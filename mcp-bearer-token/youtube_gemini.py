@@ -7,6 +7,7 @@ import logging
 import time
 import json
 import aiohttp
+import yt_dlp
 from enum import Enum
 from typing import Annotated
 from pydantic import Field, BaseModel, AnyUrl
@@ -14,11 +15,10 @@ from fastmcp import FastMCP
 from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
 from mcp.server.auth.provider import AccessToken
 from mcp import ErrorData, McpError
-from mcp.types import TextContent, ImageContent, INVALID_PARAMS, INTERNAL_ERROR
+from mcp.types import INTERNAL_ERROR
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from datetime import timedelta
 
 load_dotenv()
 
@@ -102,13 +102,13 @@ def parse_iso8601_duration(duration_str):
     if "H" in duration_str:
         h_index = duration_str.index("H")
         hours = int(duration_str[:h_index])
-        duration_str = duration_str[h_index + 1:]
+        duration_str = duration_str[h_index + 1 :]
 
     # Parse minutes
     if "M" in duration_str:
         m_index = duration_str.index("M")
         minutes = int(duration_str[:m_index])
-        duration_str = duration_str[m_index + 1:]
+        duration_str = duration_str[m_index + 1 :]
 
     # Parse seconds
     if "S" in duration_str:
@@ -135,7 +135,7 @@ def parse_iso8601_duration(duration_str):
     return {
         "human_readable": human_readable,
         "formatted": formatted_time,
-        "total_seconds": total_seconds
+        "total_seconds": total_seconds,
     }
 
 
@@ -308,13 +308,188 @@ async def get_video_length(
                 return duration_info["total_seconds"]
 
     except Exception as e:
-        logger.error(
-            f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}"
-        )
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}")
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
                 message=f"An error occurred while fetching video length: {str(e)}",
+            )
+        )
+
+
+# --- Tool: Get YouTube Video Subtitles ---
+SubtitlesToolDescription = RichToolDescription(
+    description="""
+    Extract subtitles/captions from a YouTube video using yt-dlp Python API.
+    Returns the subtitle text content, supporting both manual and auto-generated subtitles.
+    """,
+    use_when="""
+    Use this when you need to extract text subtitles or captions from a YouTube video.
+    Works with both manually added subtitles and YouTube's auto-generated captions.
+    """,
+    side_effects="Fetches subtitle data from YouTube without downloading the video.",
+)
+
+
+@mcp.tool(description=SubtitlesToolDescription.model_dump_json())
+async def get_video_subtitles(
+    url: Annotated[AnyUrl, Field(description="YouTube video URL")],
+    language: Annotated[
+        str,
+        Field(
+            description="Language code for subtitles (e.g., 'en' for English, 'es' for Spanish). Use 'auto' to get the first available subtitle."
+        ),
+    ] = "en",
+    auto_generated: Annotated[
+        bool,
+        Field(
+            description="Whether to use auto-generated subtitles if manual subtitles are not available"
+        ),
+    ] = True,
+) -> str:
+    """Extract subtitles from a YouTube video using yt-dlp Python API."""
+    try:
+        # Convert URL to string
+        url_str = str(url)
+
+        start_time = time.time()
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Fetching subtitles for URL: {url_str}"
+        )
+
+        # Configure yt-dlp options
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": [language] if language != "auto" else None,
+            "subtitlesformat": "vtt/srt/best",
+        }
+
+        # Extract video info without downloading
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url_str, download=False)
+
+            # Get video title
+            video_title = info.get("title", "Unknown Title")
+
+            # Check for subtitles
+            subtitles = info.get("subtitles", {})
+            automatic_captions = info.get("automatic_captions", {})
+
+            # Determine which subtitles to use
+            selected_subs = None
+            selected_lang = None
+            is_auto = False
+
+            if language == "auto":
+                # Try manual subtitles first
+                if subtitles:
+                    # Get the first available language
+                    selected_lang = next(iter(subtitles.keys()))
+                    selected_subs = subtitles[selected_lang]
+                elif automatic_captions and auto_generated:
+                    # Fall back to auto-generated
+                    selected_lang = next(iter(automatic_captions.keys()))
+                    selected_subs = automatic_captions[selected_lang]
+                    is_auto = True
+            else:
+                # Try the requested language
+                if language in subtitles:
+                    selected_subs = subtitles[language]
+                    selected_lang = language
+                elif auto_generated and language in automatic_captions:
+                    selected_subs = automatic_captions[language]
+                    selected_lang = language
+                    is_auto = True
+                elif auto_generated:
+                    # Try variations of the language code
+                    for lang_code in automatic_captions:
+                        if lang_code.startswith(language):
+                            selected_subs = automatic_captions[lang_code]
+                            selected_lang = lang_code
+                            is_auto = True
+                            break
+
+            if not selected_subs:
+                # List available subtitles
+                available = []
+                if subtitles:
+                    available.append(f"Manual subtitles: {', '.join(subtitles.keys())}")
+                if automatic_captions:
+                    available.append(
+                        f"Auto-generated: {', '.join(automatic_captions.keys())}"
+                    )
+
+                if available:
+                    return (
+                        f"No subtitles found for language '{language}'. Available:\n"
+                        + "\n".join(available)
+                    )
+                else:
+                    return "No subtitles available for this video."
+
+            # Find the best format (prefer vtt or srt)
+            subtitle_url = None
+            for sub in selected_subs:
+                if sub.get("ext") in ["vtt", "srt"]:
+                    subtitle_url = sub.get("url")
+                    break
+
+            if not subtitle_url and selected_subs:
+                # Use the first available format
+                subtitle_url = selected_subs[0].get("url")
+
+            if not subtitle_url:
+                return f"Could not find subtitle URL for language '{selected_lang}'"
+
+            # Download the subtitle content
+            async with aiohttp.ClientSession() as session:
+                async with session.get(subtitle_url) as response:
+                    if response.status != 200:
+                        return f"Error downloading subtitles: HTTP {response.status}"
+
+                    subtitle_content = await response.text()
+
+            # Clean up the subtitle content
+            # Remove WEBVTT header
+            subtitle_content = re.sub(r"^WEBVTT\n+", "", subtitle_content)
+
+            # Remove timestamp lines (matches both VTT and SRT format)
+            subtitle_content = re.sub(
+                r"\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}.*\n",
+                "",
+                subtitle_content,
+            )
+
+            # Remove subtitle numbers (for SRT format)
+            subtitle_content = re.sub(
+                r"^\d+\n", "", subtitle_content, flags=re.MULTILINE
+            )
+
+            # Remove HTML tags
+            subtitle_content = re.sub(r"<[^>]+>", "", subtitle_content)
+
+            # Remove duplicate blank lines
+            subtitle_content = re.sub(r"\n{3,}", "\n\n", subtitle_content)
+
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Successfully extracted subtitles for language `{selected_lang}` in {time.time() - start_time:.2f} seconds"
+            )
+
+            return f"""SUBTITLES FOR: {video_title}
+Language: {selected_lang}{' (auto-generated)' if is_auto else ''}
+
+{subtitle_content.strip()}"""
+
+    except Exception as e:
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching subtitles: {e}")
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"An error occurred while fetching subtitles: {str(e)}",
             )
         )
 
