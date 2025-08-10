@@ -43,9 +43,11 @@ client = genai.Client()
 class GeminiModel(Enum):
     """Available Gemini models with their capabilities."""
 
-    PRO = "models/gemini-2.5-pro"  # Enhanced thinking and reasoning, multimodal understanding, advanced coding
+    # Enhanced thinking and reasoning, multimodal understanding, advanced coding
+    PRO = "models/gemini-2.5-pro"
     FLASH = "models/gemini-2.5-flash"  # Adaptive thinking, cost efficiency
-    FLASH_LITE = "models/gemini-2.5-flash-lite"  # Most cost-efficient model supporting high throughput
+    # Most cost-efficient model supporting high throughput
+    FLASH_LITE = "models/gemini-2.5-flash-lite"
 
 
 # --- Auth Provider for Puch ---
@@ -102,13 +104,13 @@ def parse_iso8601_duration(duration_str):
     if "H" in duration_str:
         h_index = duration_str.index("H")
         hours = int(duration_str[:h_index])
-        duration_str = duration_str[h_index + 1 :]
+        duration_str = duration_str[h_index + 1:]
 
     # Parse minutes
     if "M" in duration_str:
         m_index = duration_str.index("M")
         minutes = int(duration_str[:m_index])
-        duration_str = duration_str[m_index + 1 :]
+        duration_str = duration_str[m_index + 1:]
 
     # Parse seconds
     if "S" in duration_str:
@@ -147,7 +149,8 @@ async def get_video_length(
         # Check if API key is available
         if not GOOGLE_API_KEY:
             logger.error("YouTube API key not configured.")
-            raise ValueError("YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables.")
+            raise ValueError(
+                "YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables.")
 
         # Convert URL to string and extract video ID
         url_str = str(url)
@@ -170,7 +173,8 @@ async def get_video_length(
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"YouTube API error: {error_text}")
-                    raise ValueError(f"Error fetching video data: HTTP {response.status}")
+                    raise ValueError(
+                        f"Error fetching video data: HTTP {response.status}")
 
                 data = await response.json()
                 logger.info(
@@ -193,7 +197,8 @@ async def get_video_length(
                 return duration_info["total_seconds"]
 
     except Exception as e:
-        logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}")
+        logger.error(
+            f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}")
         raise e
 
 
@@ -276,7 +281,8 @@ async def get_video_subtitles(
                 # List available subtitles
                 available = []
                 if subtitles:
-                    available.append(f"Manual subtitles: {', '.join(subtitles.keys())}")
+                    available.append(
+                        f"Manual subtitles: {', '.join(subtitles.keys())}")
                 if automatic_captions:
                     available.append(
                         f"Auto-generated: {', '.join(automatic_captions.keys())}"
@@ -344,7 +350,8 @@ Language: {selected_lang}{' (auto-generated)' if is_auto else ''}
 {subtitle_content.strip()}"""
 
     except Exception as e:
-        logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching subtitles: {e}")
+        logger.error(
+            f"[{time.strftime('%H:%M:%S')}] Error fetching subtitles: {e}")
         raise e
 
 
@@ -406,7 +413,7 @@ async def youtube_tool(
     )
     try:
         video_length = await get_video_length(url)
-        if video_length <= 500:
+        if video_length <= 800:
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, proceeding with direct Gemini API call."
             )
