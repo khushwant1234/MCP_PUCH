@@ -113,7 +113,7 @@ async def youtube_tool(
         Field(
             description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
         ),
-    ] = "Transcribe the audio from this video, describing salient events in the video. Also provide visual descriptions. Response should be 10-20 bulleted points.",
+    ] = "Describe the video content in 10-20 bulleted points.",
 ) -> str:
     """Transcribe and analyze a YouTube video.
     <IMPORTANT>
@@ -130,12 +130,12 @@ async def youtube_tool(
         start_time = time.time()
 
         response = client.models.generate_content(
-            model=GeminiModel.FLASH_LITE.value,
+            model=GeminiModel.FLASH.value,
             contents=types.Content(
                 parts=[
                     types.Part(
                         file_data=types.FileData(file_uri=url_str),
-                        video_metadata=types.VideoMetadata(fps=1),
+                        video_metadata=types.VideoMetadata(fps=0.1),
                     ),
                     types.Part(text=prompt),
                 ]
@@ -143,7 +143,8 @@ async def youtube_tool(
             config=types.GenerateContentConfig(
                 thinking_config=types.ThinkingConfig(
                     thinking_budget=0
-                )  # Disables thinking
+                ),  # Disables thinking
+                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
             ),
         )
 
