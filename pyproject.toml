@@ -14,5 +14,6 @@ dependencies = [
     "pillow>=11.3.0",
     "python-dotenv>=1.1.1",
     "readabilipy>=0.3.0",
-    "yt-dlp>=2025.7.21",
+    "youtube-transcript-api>=1.2.2",
+    "yt-dlp[curl-cffi,default]>=2025.7.21",
 ]
