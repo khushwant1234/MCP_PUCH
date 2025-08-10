@@ -578,7 +578,7 @@ async def youtube_tool(
             )
             logger.info(f"Gemini response:\n {response.text}\n")
             # Return with explicit formatting to help Puch AI understand this is content to display
-            return f"VIDEO TRANSCRIPTION:\n\n{response.text} \n\n Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim."
+            return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
     except Exception as e:
         logger.error(f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini")
