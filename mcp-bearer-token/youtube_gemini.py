@@ -90,8 +90,18 @@ YouTubeToolDescription = RichToolDescription(
     Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
     </IMPORTANT>
     """,
-    use_when="Use this when user provides a YouTube video URL.",
-    side_effects="Returns the FULL transcription and analysis that MUST be displayed directly to the user without modification.",
+    use_when="""
+    Use this when user provides a YouTube video URL.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
+    side_effects="""
+    Returns the FULL transcription and analysis that MUST be displayed directly to the user without modification.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
 )
 
 
@@ -103,9 +113,12 @@ async def youtube_tool(
         Field(
             description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
         ),
-    ] = "Summarize this video in 5-10 bullet points.",
+    ] = "Transcribe the audio from this video, describing salient events in the video. Also provide visual descriptions. Response should be 10-20 bulleted points.",
 ) -> str:
     """Transcribe and analyze a YouTube video.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
     """
     try:
         # Convert URL to string format
