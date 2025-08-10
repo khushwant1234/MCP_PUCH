@@ -682,7 +682,8 @@ async def youtube_tool(
             return result
 
         else:
-            return f"""Video length is {video_length} seconds (> 1800). This tool currently does not support videos longer than 30 minutes. Please provide a shorter video URL. (Yeah we're broke and on the free tier of Gemini API)"""
+            return f"""Display the following to the user verbatim:
+            Video length is {video_length} seconds (> 1800). This tool currently does not support videos longer than 30 minutes. Please provide a shorter video URL. (Yeah we're broke and on the free tier of Gemini API. Please try smol videos 👉👈)"""
             # This is not in use but kept for future use cases
     #         logger.info(
     #             f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, using subtitles extraction."
