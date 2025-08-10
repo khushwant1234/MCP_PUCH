@@ -650,7 +650,7 @@ async def youtube_tool(
             # Return with explicit formatting to help Puch AI understand this is content to display
             return f"VIDEO TRANSCRIPTION:\n\n{response.text} \n\n Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim."
 
-        elif video_length > 600:
+        elif video_length > 600 and video_length <= 1800:
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds (> 600), using 3 parallel Gemini API calls."
             )
@@ -660,59 +660,60 @@ async def youtube_tool(
             return result
 
         else:
+            return f"""Video length is {video_length} seconds (> 1800). This tool currently does not support videos longer than 30 minutes. Please provide a shorter video URL. (Yeah we're broke and on the free tier of Gemini API)"""
             # This is not in use but kept for future use cases
-            logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, using subtitles extraction."
-            )
-            # Use subtitles extraction for longer videos
-            subtitles = await get_video_subtitles(url)
+    #         logger.info(
+    #             f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, using subtitles extraction."
+    #         )
+    #         # Use subtitles extraction for longer videos
+    #         subtitles = await get_video_subtitles(url)
 
-            if not subtitles:
-                raise McpError(
-                    ErrorData(
-                        code=INTERNAL_ERROR,
-                        message="No subtitles found for this video.",
-                    )
-                )
+    #         if not subtitles:
+    #             raise McpError(
+    #                 ErrorData(
+    #                     code=INTERNAL_ERROR,
+    #                     message="No subtitles found for this video.",
+    #                 )
+    #             )
 
-            logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Successfully extracted subtitles for long video."
-            )
+    #         logger.info(
+    #             f"[{time.strftime('%H:%M:%S')}] Successfully extracted subtitles for long video."
+    #         )
 
-            # Now send the subtitles to Gemini for processing
-            subtitles_prompt_part = f'"""{subtitles}"""'
-            instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{prompt}"
-            gemini_call_start_time = time.time()
-            response = client.models.generate_content(
-                model=GeminiModel.FLASH.value,
-                contents=types.Content(
-                    parts=[
-                        types.Part(text=subtitles_prompt_part),
-                        types.Part(text=instructions_prompt_part),
-                    ]
-                ),
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
-                ),
-            )
+    #         # Now send the subtitles to Gemini for processing
+    #         subtitles_prompt_part = f'"""{subtitles}"""'
+    #         instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{prompt}"
+    #         gemini_call_start_time = time.time()
+    #         response = client.models.generate_content(
+    #             model=GeminiModel.FLASH.value,
+    #             contents=types.Content(
+    #                 parts=[
+    #                     types.Part(text=subtitles_prompt_part),
+    #                     types.Part(text=instructions_prompt_part),
+    #                 ]
+    #             ),
+    #             config=types.GenerateContentConfig(
+    #                 thinking_config=types.ThinkingConfig(thinking_budget=0),
+    #             ),
+    #         )
 
-            elapsed_time = time.time() - gemini_call_start_time
-            logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
-            )
-            logger.info(f"Gemini response:\n {response.text}\n")
-            # Return with explicit formatting to help Puch AI understand this is content to display
-            return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
+    #         elapsed_time = time.time() - gemini_call_start_time
+    #         logger.info(
+    #             f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
+    #         )
+    #         logger.info(f"Gemini response:\n {response.text}\n")
+    #         # Return with explicit formatting to help Puch AI understand this is content to display
+    #         return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
-    except Exception as e:
-        logger.error(f"[{time.strftime('%H:%M:%S')}] Error processing the video: {e}")
-        raise McpError(
-            ErrorData(
-                code=INTERNAL_ERROR,
-                message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
-                + str(e),
-            )
-        )
+    # except Exception as e:
+    #     logger.error(f"[{time.strftime('%H:%M:%S')}] Error processing the video: {e}")
+    #     raise McpError(
+    #         ErrorData(
+    #             code=INTERNAL_ERROR,
+    #             message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
+    #             + str(e),
+    #         )
+    #     )
     finally:
         logger.info(
             f"[{time.strftime('%H:%M:%S')}] Finished YouTube Tool for URL: {url} in {time.time() - tool_start_time:.2f} seconds"
