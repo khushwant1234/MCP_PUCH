@@ -147,7 +147,9 @@ async def get_video_length(
         # Check if API key is available
         if not GOOGLE_API_KEY:
             logger.error("YouTube API key not configured.")
-            raise ValueError("YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables.")
+            raise ValueError(
+                "YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables."
+            )
 
         # Convert URL to string and extract video ID
         url_str = str(url)
@@ -170,7 +172,9 @@ async def get_video_length(
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"YouTube API error: {error_text}")
-                    raise ValueError(f"Error fetching video data: HTTP {response.status}")
+                    raise ValueError(
+                        f"Error fetching video data: HTTP {response.status}"
+                    )
 
                 data = await response.json()
                 logger.info(
@@ -224,7 +228,7 @@ async def get_video_subtitles(
             "writesubtitles": True,
             "writeautomaticsub": True,
             "subtitleslangs": [language] if language != "auto" else None,
-            "subtitlesformat": "vtt/srt/best",
+            "subtitlesformat": "srt/vtt/best",
         }
 
         # Extract video info without downloading
@@ -311,6 +315,94 @@ async def get_video_subtitles(
                         return f"Error downloading subtitles: HTTP {response.status}"
 
                     subtitle_content = await response.text()
+
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Successfully downloaded subtitles for language `{selected_lang}`"
+            )
+            logger.info(
+                f"Subtitle Format: {selected_subs[0].get('ext', 'unknown')}, URL: {subtitle_url}"
+            )
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Subtitle content (first 1000 chars): {subtitle_content[:1000]}"
+            )
+
+            # Check if we got an M3U8 playlist instead of actual subtitles
+            if subtitle_content.startswith("#EXTM3U") or subtitle_content.startswith(
+                "#EXT-X-"
+            ):
+                logger.info(
+                    f"[{time.strftime('%H:%M:%S')}] Detected M3U8 playlist, extracting VTT URLs..."
+                )
+
+                # Extract VTT URLs from the M3U8 playlist
+                vtt_urls = []
+                lines = subtitle_content.split("\n")
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("https://") and "fmt=vtt" in line:
+                        vtt_urls.append(line)
+
+                if not vtt_urls:
+                    return "No VTT URLs found in the subtitle playlist."
+
+                logger.info(
+                    f"[{time.strftime('%H:%M:%S')}] Found {len(vtt_urls)} VTT chunks, downloading in parallel..."
+                )
+
+                # Download all VTT chunks in parallel
+                async def download_chunk(session, url, index):
+                    """Download a single VTT chunk."""
+                    try:
+                        async with session.get(url) as response:
+                            if response.status == 200:
+                                content = await response.text()
+                                return (index, content)
+                            else:
+                                logger.warning(
+                                    f"Failed to download chunk {index+1}: HTTP {response.status}"
+                                )
+                                return (index, None)
+                    except Exception as e:
+                        logger.warning(f"Error downloading chunk {index+1}: {e}")
+                        return (index, None)
+
+                # Create semaphore to limit concurrent downloads (avoid overwhelming the server)
+                semaphore = asyncio.Semaphore(10)  # Max 10 concurrent downloads
+
+                async def download_with_semaphore(session, url, index):
+                    async with semaphore:
+                        return await download_chunk(session, url, index)
+
+                async with aiohttp.ClientSession() as session:
+                    # Create download tasks for all chunks
+                    tasks = [
+                        download_with_semaphore(session, url, i)
+                        for i, url in enumerate(vtt_urls)
+                    ]
+
+                    # Execute all downloads concurrently
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Sort results by index and combine content
+                successful_chunks = []
+                for result in results:
+                    if isinstance(result, tuple) and result[1] is not None:
+                        successful_chunks.append(result)
+                    elif isinstance(result, Exception):
+                        logger.warning(f"Download task failed: {result}")
+
+                # Sort by index to maintain proper order
+                successful_chunks.sort(key=lambda x: x[0])
+
+                # Combine all chunk content
+                all_subtitle_content = ""
+                for index, content in successful_chunks:
+                    all_subtitle_content += content + "\n"
+
+                subtitle_content = all_subtitle_content
+                logger.info(
+                    f"[{time.strftime('%H:%M:%S')}] Successfully downloaded and combined {len(successful_chunks)}/{len(vtt_urls)} VTT chunks"
+                )
 
             # Clean up the subtitle content
             # Remove WEBVTT header
@@ -401,9 +493,7 @@ async def youtube_tool(
     </IMPORTANT>
     """
     tool_start_time = time.time()
-    logger.info(
-        f"[{time.strftime('%H:%M:%S')}] Starting YouTube Tool for URL: {url}"
-    )
+    logger.info(f"[{time.strftime('%H:%M:%S')}] Starting YouTube Tool for URL: {url}")
     try:
         video_length = await get_video_length(url)
         if video_length <= 500:
@@ -466,7 +556,7 @@ async def youtube_tool(
             )
 
             # Now send the subtitles to Gemini for processing
-            subtitles_prompt_part = f"\"\"\"{subtitles}\"\"\""
+            subtitles_prompt_part = f'"""{subtitles}"""'
             instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{prompt}"
             gemini_call_start_time = time.time()
             response = client.models.generate_content(
@@ -491,9 +581,7 @@ async def youtube_tool(
             return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
     except Exception as e:
-        logger.error(
-            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini"
-        )
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini")
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
