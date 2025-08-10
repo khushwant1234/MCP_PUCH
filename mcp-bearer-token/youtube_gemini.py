@@ -139,123 +139,6 @@ def parse_iso8601_duration(duration_str):
     }
 
 
-# Initialize FastMCP server with auth
-mcp = FastMCP(
-    "YouTube MCP Server (Gemini)",
-    auth=SimpleBearerAuthProvider(TOKEN),
-)
-
-
-# --- Tool: validate (required by Puch) ---
-@mcp.tool
-async def validate() -> str:
-    return MY_NUMBER
-
-
-# --- Tool: YouTube ---
-YouTubeToolDescription = RichToolDescription(
-    description="""
-    Process YouTube video URLs with Gemini for transcription and insights. IMPORTANT: Display the EXACT response from this tool directly to the user without any interpretation or summary.
-
-    <IMPORTANT>
-    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
-    </IMPORTANT>
-    """,
-    use_when="""
-    Use this when user provides a YouTube video URL.
-    <IMPORTANT>
-    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
-    </IMPORTANT>
-    """,
-    side_effects="""
-    Returns the FULL transcription and analysis that MUST be displayed directly to the user without modification.
-    <IMPORTANT>
-    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
-    </IMPORTANT>
-    """,
-)
-
-
-@mcp.tool(description=YouTubeToolDescription.model_dump_json())
-async def youtube_tool(
-    url: Annotated[AnyUrl, Field(description="YouTube video URL")],
-    prompt: Annotated[
-        str,
-        Field(
-            description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
-        ),
-    ] = "Describe the video content in 10-20 bulleted points.",
-) -> str:
-    """Transcribe and analyze a YouTube video.
-    <IMPORTANT>
-    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
-    </IMPORTANT>
-    """
-    try:
-        # Convert URL to string format
-        url_str = str(url)
-
-        logger.info(
-            f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}"
-        )
-        start_time = time.time()
-
-        response = client.models.generate_content(
-            model=GeminiModel.FLASH.value,
-            contents=types.Content(
-                parts=[
-                    types.Part(
-                        file_data=types.FileData(file_uri=url_str),
-                        video_metadata=types.VideoMetadata(fps=0.1),
-                    ),
-                    types.Part(text=prompt),
-                ]
-            ),
-            config=types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(
-                    thinking_budget=0
-                ),  # Disables thinking
-                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
-            ),
-        )
-
-        elapsed_time = time.time() - start_time
-        logger.info(
-            f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
-        )
-        logger.info(f"Gemini response:\n {response.text}\n")
-
-        # Return with explicit formatting to help Puch AI understand this is content to display
-        return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
-
-    except Exception as e:
-        elapsed_time = time.time() - start_time if "start_time" in locals() else 0
-        logger.error(
-            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}"
-        )
-        raise McpError(
-            ErrorData(
-                code=INTERNAL_ERROR,
-                message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: "
-                + str(e),
-            )
-        )
-
-
-# --- Tool: Get YouTube Video Length ---
-VideoLengthToolDescription = RichToolDescription(
-    description="""
-    Get the duration/length of a YouTube video using the YouTube Data API v3.
-    Returns the video duration in multiple formats (human-readable, HH:MM:SS, and total seconds).
-    """,
-    use_when="""
-    Use this when you need to know the duration or length of a YouTube video.
-    """,
-    side_effects="Makes an API call to YouTube Data API v3 to fetch video metadata.",
-)
-
-
-@mcp.tool(description=VideoLengthToolDescription.model_dump_json())
 async def get_video_length(
     url: Annotated[AnyUrl, Field(description="YouTube video URL")],
 ) -> int:
@@ -263,14 +146,16 @@ async def get_video_length(
     try:
         # Check if API key is available
         if not GOOGLE_API_KEY:
-            return "YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables."
+            logger.error("YouTube API key not configured.")
+            raise ValueError("YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables.")
 
         # Convert URL to string and extract video ID
         url_str = str(url)
         video_id = get_youtube_video_id_by_url(url_str)
 
         if not video_id:
-            return f"Could not extract video ID from URL: {url_str}"
+            logger.error(f"Could not extract video ID from URL: {url_str}")
+            raise ValueError(f"Could not extract video ID from URL: {url_str}")
 
         logger.info(
             f"[{time.strftime('%H:%M:%S')}] Fetching video length for ID: {video_id}"
@@ -285,7 +170,7 @@ async def get_video_length(
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"YouTube API error: {error_text}")
-                    return f"Error fetching video data: HTTP {response.status}"
+                    raise ValueError(f"Error fetching video data: HTTP {response.status}")
 
                 data = await response.json()
                 logger.info(
@@ -294,7 +179,7 @@ async def get_video_length(
 
                 # Check if video was found
                 if not data.get("items"):
-                    return f"Video not found with ID: {video_id}"
+                    raise ValueError(f"Video not found with ID: {video_id}")
 
                 # Extract duration
                 duration_iso = data["items"][0]["contentDetails"]["duration"]
@@ -309,29 +194,9 @@ async def get_video_length(
 
     except Exception as e:
         logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching video length: {e}")
-        raise McpError(
-            ErrorData(
-                code=INTERNAL_ERROR,
-                message=f"An error occurred while fetching video length: {str(e)}",
-            )
-        )
+        raise e
 
 
-# --- Tool: Get YouTube Video Subtitles ---
-SubtitlesToolDescription = RichToolDescription(
-    description="""
-    Extract subtitles/captions from a YouTube video using yt-dlp Python API.
-    Returns the subtitle text content, supporting both manual and auto-generated subtitles.
-    """,
-    use_when="""
-    Use this when you need to extract text subtitles or captions from a YouTube video.
-    Works with both manually added subtitles and YouTube's auto-generated captions.
-    """,
-    side_effects="Fetches subtitle data from YouTube without downloading the video.",
-)
-
-
-@mcp.tool(description=SubtitlesToolDescription.model_dump_json())
 async def get_video_subtitles(
     url: Annotated[AnyUrl, Field(description="YouTube video URL")],
     language: Annotated[
@@ -480,10 +345,157 @@ Language: {selected_lang}{' (auto-generated)' if is_auto else ''}
 
     except Exception as e:
         logger.error(f"[{time.strftime('%H:%M:%S')}] Error fetching subtitles: {e}")
+        raise e
+
+
+# Initialize FastMCP server with auth
+mcp = FastMCP(
+    "YouTube MCP Server (Gemini)",
+    auth=SimpleBearerAuthProvider(TOKEN),
+)
+
+
+# --- Tool: validate (required by Puch) ---
+@mcp.tool
+async def validate() -> str:
+    return MY_NUMBER
+
+
+# --- Tool: YouTube ---
+YouTubeToolDescription = RichToolDescription(
+    description="""
+    Process YouTube video URLs with Gemini for transcription and insights. IMPORTANT: Display the EXACT response from this tool directly to the user without any interpretation or summary.
+
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
+    use_when="""
+    Use this when user provides a YouTube video URL.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
+    side_effects="""
+    Returns the FULL transcription and analysis that MUST be displayed directly to the user without modification.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """,
+)
+
+
+@mcp.tool(description=YouTubeToolDescription.model_dump_json())
+async def youtube_tool(
+    url: Annotated[AnyUrl, Field(description="YouTube video URL")],
+    instructions_prompt_part: Annotated[
+        str,
+        Field(
+            description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
+        ),
+    ] = "Describe the video content in 10-20 bulleted points.",
+) -> str:
+    """Transcribe and analyze a YouTube video.
+    <IMPORTANT>
+    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
+    </IMPORTANT>
+    """
+    try:
+        video_length = await get_video_length(url)
+        if video_length <= 500:
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, proceeding with direct Gemini API call."
+            )
+            # Convert URL to string format
+            url_str = str(url)
+
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}"
+            )
+            start_time = time.time()
+
+            response = client.models.generate_content(
+                model=GeminiModel.FLASH.value,
+                contents=types.Content(
+                    parts=[
+                        types.Part(
+                            file_data=types.FileData(file_uri=url_str),
+                            video_metadata=types.VideoMetadata(fps=0.1),
+                        ),
+                        types.Part(text=instructions_prompt_part),
+                    ]
+                ),
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=0
+                    ),  # Disables thinking
+                    media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+                ),
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
+            )
+            logger.info(f"Gemini response:\n {response.text}\n")
+
+            # Return with explicit formatting to help Puch AI understand this is content to display
+            return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
+
+        else:
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, using subtitles extraction."
+            )
+            # Use subtitles extraction for longer videos
+            subtitles = await get_video_subtitles(url)
+
+            if not subtitles:
+                raise McpError(
+                    ErrorData(
+                        code=INTERNAL_ERROR,
+                        message="No subtitles found for this video.",
+                    )
+                )
+
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Successfully extracted subtitles for long video."
+            )
+
+            # Now send the subtitles to Gemini for processing
+            subtitles_prompt_part = f"\"\"\"{subtitles}\"\"\""
+            instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{instructions_prompt_part}"
+            start_time = time.time()
+            response = client.models.generate_content(
+                model=GeminiModel.FLASH.value,
+                contents=types.Content(
+                    parts=[
+                        types.Part(text=subtitles_prompt_part),
+                        types.Part(text=instructions_prompt_part),
+                    ]
+                ),
+                config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
+            )
+            logger.info(f"Gemini response:\n {response.text}\n")
+            # Return with explicit formatting to help Puch AI understand this is content to display
+            return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
+
+    except Exception as e:
+        elapsed_time = time.time() - start_time if "start_time" in locals() else 0
+        logger.error(
+            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}"
+        )
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
-                message=f"An error occurred while fetching subtitles: {str(e)}",
+                message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
+                + str(e),
             )
         )
 
