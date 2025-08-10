@@ -388,12 +388,12 @@ YouTubeToolDescription = RichToolDescription(
 @mcp.tool(description=YouTubeToolDescription.model_dump_json())
 async def youtube_tool(
     url: Annotated[AnyUrl, Field(description="YouTube video URL")],
-    instructions_prompt_part: Annotated[
+    prompt: Annotated[
         str,
         Field(
             description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
         ),
-    ] = "Describe the video content in 10-20 bulleted points.",
+    ] = "Describe the video content in 20-30 bulleted points. Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.",
 ) -> str:
     """Transcribe and analyze a YouTube video.
     <IMPORTANT>
@@ -419,14 +419,14 @@ async def youtube_tool(
             gemini_call_start_time = time.time()
 
             response = client.models.generate_content(
-                model=GeminiModel.FLASH.value,
+                model=GeminiModel.FLASH_LITE.value,
                 contents=types.Content(
                     parts=[
                         types.Part(
                             file_data=types.FileData(file_uri=url_str),
                             video_metadata=types.VideoMetadata(fps=0.1),
                         ),
-                        types.Part(text=instructions_prompt_part),
+                        types.Part(text=prompt),
                     ]
                 ),
                 config=types.GenerateContentConfig(
@@ -467,7 +467,7 @@ async def youtube_tool(
 
             # Now send the subtitles to Gemini for processing
             subtitles_prompt_part = f"\"\"\"{subtitles}\"\"\""
-            instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{instructions_prompt_part}"
+            instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{prompt}"
             gemini_call_start_time = time.time()
             response = client.models.generate_content(
                 model=GeminiModel.FLASH.value,
