@@ -3,7 +3,7 @@ name: Keep Render Server Alive
 on:
   schedule:
     # Runs every 10 minutes
-    - cron: '*/10 * * * *'
+    - cron: "*/10 * * * *"
 
 jobs:
   ping:
@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Send request to Render server
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" YOUR_RENDER_URL_HERE/mcp)
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://mcp-puch-80eg.onrender.com/mcp)
           echo "Pinged server, received status code: $response"
           if [ "$response" -ne 200 ]; then
             echo "Server might be down!"
