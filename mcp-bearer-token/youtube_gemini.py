@@ -640,10 +640,7 @@ async def youtube_tool(
         ),
     ] = "Describe the video content in 5-10 bulleted points. Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.",
 ) -> str:
-    """Transcribe and analyze a YouTube video.
-    <IMPORTANT>
-    Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
-    </IMPORTANT>
+    """Transcribe and analyze a YouTube video. Ask questions about it.
     """
     tool_start_time = time.time()
     logger.info(
