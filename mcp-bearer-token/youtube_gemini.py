@@ -174,7 +174,7 @@ async def get_video_length(
 
                 data = await response.json()
                 logger.info(
-                    f"[{time.strftime('%H:%M:%S')}] YouTube API response: {json.dumps(data, indent=2)}"
+                    f"[{time.strftime('%H:%M:%S')}] Successfully fetched video length from YouTube API"
                 )
 
                 # Check if video was found
@@ -400,6 +400,10 @@ async def youtube_tool(
     Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.
     </IMPORTANT>
     """
+    tool_start_time = time.time()
+    logger.info(
+        f"[{time.strftime('%H:%M:%S')}] Starting YouTube Tool for URL: {url}"
+    )
     try:
         video_length = await get_video_length(url)
         if video_length <= 500:
@@ -412,7 +416,7 @@ async def youtube_tool(
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}"
             )
-            start_time = time.time()
+            gemini_call_start_time = time.time()
 
             response = client.models.generate_content(
                 model=GeminiModel.FLASH.value,
@@ -433,7 +437,7 @@ async def youtube_tool(
                 ),
             )
 
-            elapsed_time = time.time() - start_time
+            elapsed_time = time.time() - gemini_call_start_time
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
             )
@@ -464,7 +468,7 @@ async def youtube_tool(
             # Now send the subtitles to Gemini for processing
             subtitles_prompt_part = f"\"\"\"{subtitles}\"\"\""
             instructions_prompt_part = f"Answer the questions/prompt on the basis of the above subtitles from a YouTube video:\n\n{instructions_prompt_part}"
-            start_time = time.time()
+            gemini_call_start_time = time.time()
             response = client.models.generate_content(
                 model=GeminiModel.FLASH.value,
                 contents=types.Content(
@@ -478,7 +482,7 @@ async def youtube_tool(
                 ),
             )
 
-            elapsed_time = time.time() - start_time
+            elapsed_time = time.time() - gemini_call_start_time
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
             )
@@ -487,9 +491,8 @@ async def youtube_tool(
             return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
     except Exception as e:
-        elapsed_time = time.time() - start_time if "start_time" in locals() else 0
         logger.error(
-            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini after {elapsed_time:.2f} seconds: {e}"
+            f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini"
         )
         raise McpError(
             ErrorData(
@@ -497,6 +500,10 @@ async def youtube_tool(
                 message="An error occurred while processing the YouTube video. Please try again later.\n\n Error: \n"
                 + str(e),
             )
+        )
+    finally:
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] Finished YouTube Tool for URL: {url} in {time.time() - tool_start_time:.2f} seconds"
         )
 
 
