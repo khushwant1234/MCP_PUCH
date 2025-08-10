@@ -28,16 +28,31 @@ logger = logging.getLogger(__name__)
 # Get auth credentials for Puch
 TOKEN = os.environ.get("AUTH_TOKEN_2")
 MY_NUMBER = os.environ.get("MY_NUMBER")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GOOGLE_API_KEY_1 = os.environ.get("GOOGLE_API_KEY_1")
 
 assert TOKEN is not None, "Please set AUTH_TOKEN in your .env file"
 assert MY_NUMBER is not None, "Please set MY_NUMBER in your .env file"
-assert GOOGLE_API_KEY is not None, "Please set GOOGLE_API_KEY in your .env file"
-assert "GEMINI_API_KEY" in os.environ, "Please set GEMINI_API_KEY in your environment"
 # YouTube API key is optional - only needed for get_video_length tool
 
 # GEMINI_API_KEY must be set in the environment for Gemini API access
-client = genai.Client()
+# Support for multiple Gemini API keys for parallel processing
+GEMINI_API_KEYS = [
+    os.environ.get("GEMINI_API_KEY_1"),
+    os.environ.get("GEMINI_API_KEY_2"),
+    os.environ.get("GEMINI_API_KEY_3"),
+]
+
+# Filter out None values and ensure we have at least one key
+GEMINI_API_KEYS = [key for key in GEMINI_API_KEYS if key is not None]
+assert (
+    len(GEMINI_API_KEYS) >= 1
+), "At least GEMINI_API_KEY must be set in your environment"
+
+# Primary client for single API calls
+client = genai.Client(api_key=GEMINI_API_KEYS[1])
+
+# Create clients for each API key for parallel processing
+gemini_clients = [genai.Client(api_key=key) for key in GEMINI_API_KEYS]
 
 
 class GeminiModel(Enum):
@@ -145,10 +160,10 @@ async def get_video_length(
     """Get the duration of a YouTube video."""
     try:
         # Check if API key is available
-        if not GOOGLE_API_KEY:
+        if not GOOGLE_API_KEY_1:
             logger.error("YouTube API key not configured.")
             raise ValueError(
-                "YouTube API key not configured. Please set GOOGLE_API_KEY in your environment variables."
+                "YouTube API key not configured. Please set GOOGLE_API_KEY_1 in your environment variables."
             )
 
         # Convert URL to string and extract video ID
@@ -164,7 +179,7 @@ async def get_video_length(
         )
 
         # Construct the API URL
-        api_url = f"https://www.googleapis.com/youtube/v3/videos?id={video_id}&part=contentDetails&key={GOOGLE_API_KEY}"
+        api_url = f"https://www.googleapis.com/youtube/v3/videos?id={video_id}&part=contentDetails&key={GOOGLE_API_KEY_1}"
 
         # Make the API request
         async with aiohttp.ClientSession() as session:
@@ -440,6 +455,113 @@ Language: {selected_lang}{' (auto-generated)' if is_auto else ''}
         raise e
 
 
+async def make_parallel_gemini_calls(
+    url_str: str, prompt: str, video_length: int
+) -> str:
+    """Make parallel API calls to Gemini with different API keys and combine results."""
+
+    async def make_single_call(client_gemini, client_index, offset_start, offset_end):
+        """Make a single Gemini API call with specific time offsets."""
+        try:
+            # Add unique timestamp to track when each call actually starts
+            unique_start_time = time.time()
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}.{int((unique_start_time % 1) * 1000):03d}] STARTING parallel Gemini call {client_index + 1}/3 with offsets {offset_start}-{offset_end}"
+            )
+
+            # Run the synchronous API call in a thread pool to achieve true parallelism
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: client_gemini.models.generate_content(
+                    model=GeminiModel.FLASH_LITE.value,
+                    contents=types.Content(
+                        parts=[
+                            types.Part(
+                                file_data=types.FileData(file_uri=url_str),
+                                video_metadata=types.VideoMetadata(
+                                    fps=0.1,
+                                    start_offset=offset_start,
+                                    end_offset=offset_end,
+                                ),
+                            ),
+                            types.Part(
+                                text=f"{prompt} (Segment {client_index + 1}/3: {offset_start} to {offset_end})"
+                            ),
+                        ]
+                    ),
+                    config=types.GenerateContentConfig(
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
+                        media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+                    ),
+                ),
+            )
+
+            elapsed_time = time.time() - unique_start_time
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}.{int((time.time() % 1) * 1000):03d}] COMPLETED parallel Gemini call {client_index + 1}/3 in {elapsed_time:.2f} seconds"
+            )
+
+            return f"=== SEGMENT {client_index + 1} ({offset_start} to {offset_end}) ===\n{response.text}"
+
+        except Exception as e:
+            logger.error(
+                f"[{time.strftime('%H:%M:%S')}] Error in parallel call {client_index + 1}: {e}"
+            )
+            return f"=== SEGMENT {client_index + 1} ({offset_start} to {offset_end}) ===\nError: {str(e)}"
+
+    # Calculate time segments for 3 parallel calls
+    segment_duration = video_length // 3
+
+    # Define time offsets for each segment
+    segments = [
+        ("0s", f"{segment_duration}s"),
+        (f"{segment_duration}s", f"{segment_duration * 2}s"),
+        (f"{segment_duration * 2}s", f"{video_length}s"),
+    ]
+
+    # Use available clients (cycle through them if we have fewer than 3 keys)
+    num_clients = len(gemini_clients)
+
+    logger.info(
+        f"[{time.strftime('%H:%M:%S')}] About to start 3 parallel Gemini API calls using {num_clients} API key(s)"
+    )
+
+    # Create coroutines first, then convert to tasks
+    coroutines = []
+    for i in range(3):
+        client_index = i % num_clients  # Cycle through available clients
+        client_to_use = gemini_clients[client_index]
+        offset_start, offset_end = segments[i]
+
+        # Create coroutine
+        coro = make_single_call(client_to_use, i, offset_start, offset_end)
+        coroutines.append(coro)
+
+    # Execute all calls in parallel using asyncio.gather
+    parallel_start_time = time.time()
+    logger.info(
+        f"[{time.strftime('%H:%M:%S')}] Executing gather() for parallel calls..."
+    )
+
+    results = await asyncio.gather(*coroutines, return_exceptions=True)
+
+    parallel_elapsed_time = time.time() - parallel_start_time
+    logger.info(
+        f"[{time.strftime('%H:%M:%S')}] All parallel calls completed in {parallel_elapsed_time:.2f} seconds"
+    )
+
+    # Combine results
+    combined_result = "\n\n".join(
+        [
+            str(result) if not isinstance(result, Exception) else f"Error: {result}"
+            for result in results
+        ]
+    )
+
+    return f"VIDEO TRANSCRIPTION (3 Parallel Segments):\n\n{combined_result}"
+
+
 # Initialize FastMCP server with auth
 mcp = FastMCP(
     "YouTube MCP Server (Gemini)",
@@ -485,7 +607,7 @@ async def youtube_tool(
         Field(
             description="Instructions for processing the video (transcription, summarization, visual description). Can include timestamps like 00:01:00. Can include questions about the video."
         ),
-    ] = "Describe the video content in 20-30 bulleted points. Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.",
+    ] = "Describe the video content in 5-10 bulleted points. Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.",
 ) -> str:
     """Transcribe and analyze a YouTube video.
     <IMPORTANT>
@@ -496,34 +618,27 @@ async def youtube_tool(
     logger.info(f"[{time.strftime('%H:%M:%S')}] Starting YouTube Tool for URL: {url}")
     try:
         video_length = await get_video_length(url)
-        if video_length <= 500:
-            logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, proceeding with direct Gemini API call."
-            )
-            # Convert URL to string format
-            url_str = str(url)
 
+        # Convert URL to string format
+        url_str = str(url)
+
+        if video_length <= 600:
             logger.info(
-                f"[{time.strftime('%H:%M:%S')}] Starting Gemini API call for YouTube URL: {url_str}"
+                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds (< 600), using single Gemini API call."
             )
+
+            # Use a single Gemini API call for shorter videos
             gemini_call_start_time = time.time()
-
             response = client.models.generate_content(
-                model=GeminiModel.FLASH_LITE.value,
+                model=GeminiModel.FLASH.value,
                 contents=types.Content(
                     parts=[
-                        types.Part(
-                            file_data=types.FileData(file_uri=url_str),
-                            video_metadata=types.VideoMetadata(fps=0.1),
-                        ),
+                        types.Part(file_data=types.FileData(file_uri=url_str)),
                         types.Part(text=prompt),
                     ]
                 ),
                 config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=0
-                    ),  # Disables thinking
-                    media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
 
@@ -532,11 +647,20 @@ async def youtube_tool(
                 f"[{time.strftime('%H:%M:%S')}] Gemini API call completed in {elapsed_time:.2f} seconds"
             )
             logger.info(f"Gemini response:\n {response.text}\n")
-
             # Return with explicit formatting to help Puch AI understand this is content to display
-            return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
+            return f"VIDEO TRANSCRIPTION:\n\n{response.text} \n\n Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim."
+
+        elif video_length > 600:
+            logger.info(
+                f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds (> 600), using 3 parallel Gemini API calls."
+            )
+
+            # Use parallel API calls for better processing
+            result = await make_parallel_gemini_calls(url_str, prompt, video_length)
+            return result
 
         else:
+            # This is not in use but kept for future use cases
             logger.info(
                 f"[{time.strftime('%H:%M:%S')}] Video length is {video_length} seconds, using subtitles extraction."
             )
@@ -581,7 +705,7 @@ async def youtube_tool(
             return f"VIDEO TRANSCRIPTION:\n\n{response.text}"
 
     except Exception as e:
-        logger.error(f"[{time.strftime('%H:%M:%S')}] Error transcribing with Gemini")
+        logger.error(f"[{time.strftime('%H:%M:%S')}] Error processing the video: {e}")
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
