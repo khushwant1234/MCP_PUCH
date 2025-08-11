@@ -15,14 +15,14 @@ from dotenv import load_dotenv
 
 # Import the music memes functionality
 try:
-    from app import generate_meme_from_url, generate_meme_from_urls, generate_meme_image_from_url, generate_meme_image_from_urls
+    from app import generate_meme_image_from_url, generate_meme_image_from_urls
 except ImportError:
     # If running from different directory, try absolute imports
     import sys
     import os
 
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from app import generate_meme_from_url, generate_meme_from_urls, generate_meme_image_from_url, generate_meme_image_from_urls
+    from app import generate_meme_image_from_url, generate_meme_image_from_urls
 
 load_dotenv()
 
