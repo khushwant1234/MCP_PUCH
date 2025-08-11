@@ -1,0 +1,256 @@
+import os
+import logging
+import asyncio
+from textwrap import dedent
+from enum import Enum
+from typing import Annotated, List
+from pydantic import Field, BaseModel, AnyUrl
+from fastmcp import FastMCP
+from fastmcp.utilities.types import Image
+from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
+from mcp.server.auth.provider import AccessToken
+from mcp import ErrorData, McpError
+from mcp.types import INTERNAL_ERROR, ImageContent
+from dotenv import load_dotenv
+
+# Import the music memes functionality
+try:
+    from app import generate_meme_from_url, generate_meme_from_urls, generate_meme_image_from_url, generate_meme_image_from_urls
+except ImportError:
+    # If running from different directory, try absolute imports
+    import sys
+    import os
+
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from app import generate_meme_from_url, generate_meme_from_urls, generate_meme_image_from_url, generate_meme_image_from_urls
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Get auth credentials for Puch
+TOKEN = os.environ.get("AUTH_TOKEN_2")
+MY_NUMBER = os.environ.get("MY_NUMBER")
+
+assert TOKEN is not None, "Please set AUTH_TOKEN_2 in your .env file"
+assert MY_NUMBER is not None, "Please set MY_NUMBER in your .env file"
+
+
+def _encode_image(image) -> ImageContent:
+    """
+    Encodes a PIL Image to a format compatible with ImageContent.
+    """
+    import io
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    img_bytes = buffer.getvalue()
+    img_obj = Image(data=img_bytes, format="png")
+    return img_obj.to_image_content()
+
+
+# --- Auth Provider for Puch ---
+class SimpleBearerAuthProvider(BearerAuthProvider):
+    def __init__(self, token: str):
+        k = RSAKeyPair.generate()
+        super().__init__(
+            public_key=k.public_key, jwks_uri=None, issuer=None, audience=None
+        )
+        self.token = token
+
+    async def load_access_token(self, token: str) -> AccessToken | None:
+        if token == self.token:
+            return AccessToken(
+                token=token,
+                client_id="puch-client",
+                scopes=["*"],
+                expires_at=None,
+            )
+        return None
+
+
+# --- Rich Tool Description model ---
+class RichToolDescription(BaseModel):
+    description: str
+    use_when: str
+    side_effects: str | None = None
+
+
+# Initialize FastMCP server with auth
+mcp = FastMCP(
+    "Music Memes MCP Server",
+    auth=SimpleBearerAuthProvider(TOKEN),
+)
+
+
+# --- Tool: validate (required by Puch) ---
+@mcp.tool
+async def validate() -> str:
+    return MY_NUMBER
+
+
+# --- Tool: about (recommended by Puch) ---
+@mcp.tool
+async def about() -> dict[str, str]:
+    server_name = "Music Memes MCP Server"
+    server_description = dedent(
+        """
+        This MCP server creates music memes by generating composite images from YouTube Music URLs.
+        It downloads thumbnails from YouTube Music and overlays them onto background templates to create meme-style images.
+
+        Features:
+        - Generate memes from single YouTube Music URLs
+        - Generate memes from multiple YouTube Music URLs (up to 5)
+        - Automatic thumbnail extraction and image composition
+        - Random background selection for visual variety
+        """
+    )
+
+    return {"name": server_name, "description": server_description}
+
+
+# --- Tool: Single Meme Generation ---
+SingleMemeToolDescription = RichToolDescription(
+    description="""
+    Generate a meme image from a single YouTube Music URL. Downloads the thumbnail and overlays it onto a random background template.
+    """,
+    use_when="""
+    Use this when the user provides a single YouTube Music URL and wants to create a meme image from it.
+    """,
+    side_effects="""
+    Downloads thumbnail image, creates composite image, saves to outputs directory.
+    """,
+)
+
+
+@mcp.tool(description=SingleMemeToolDescription.model_dump_json())
+async def generate_single_meme(
+    url: Annotated[
+        AnyUrl, Field(description="YouTube Music URL for a song, album, or playlist")
+    ],
+) -> ImageContent:
+    """Generate a meme image from a single YouTube Music URL."""
+    try:
+        logger.info(f"Generating meme from single URL: {url}")
+
+        # Convert URL to string format
+        url_str = str(url)
+
+        # Generate meme
+        meme_image = generate_meme_image_from_url(url_str)
+
+        if meme_image:
+            logger.info(f"Successfully generated meme from URL: {url_str}")
+            return _encode_image(meme_image)
+        else:
+            logger.error(f"Failed to generate meme from URL: {url_str}")
+            raise McpError(
+                ErrorData(
+                    code=INTERNAL_ERROR,
+                    message="Failed to generate meme. This could be due to:\n- Invalid YouTube Music URL\n- Thumbnail download failure\n- Missing background templates\n- File system issues",
+                )
+            )
+
+    except Exception as e:
+        logger.error(f"Error generating single meme: {e}")
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"An error occurred while generating the meme: {str(e)}",
+            )
+        )
+
+
+# --- Tool: Multiple Memes Generation ---
+MultipleMemeToolDescription = RichToolDescription(
+    description="""
+    Generate a single meme image from multiple YouTube Music URLs (maximum 5). Downloads thumbnails from all URLs and composites them onto a background template designed for multiple images.
+    """,
+    use_when="""
+    Use this when the user provides multiple YouTube Music URLs (2-5) and wants to create a single meme image containing all of them.
+    """,
+    side_effects="""
+    Downloads multiple thumbnail images, creates single composite image with all thumbnails, saves to outputs directory.
+    """,
+)
+
+
+@mcp.tool(description=MultipleMemeToolDescription.model_dump_json())
+async def generate_multiple_memes(
+    urls: Annotated[
+        List[AnyUrl],
+        Field(
+            description="List of YouTube Music URLs (maximum 5)",
+            min_length=1,
+            max_length=5,
+        ),
+    ],
+) -> ImageContent:
+    """Generate a single meme image from multiple YouTube Music URLs (max 5)."""
+    try:
+        logger.info(f"Generating meme from {len(urls)} URLs: {urls}")
+
+        # Convert URLs to string format
+        url_strings = [str(url) for url in urls]
+
+        # Validate input
+        if len(url_strings) > 5:
+            raise McpError(
+                ErrorData(
+                    code=INTERNAL_ERROR,
+                    message="Maximum 5 URLs allowed for meme generation.",
+                )
+            )
+
+        if len(url_strings) == 0:
+            raise McpError(
+                ErrorData(
+                    code=INTERNAL_ERROR,
+                    message="At least 1 URL is required for meme generation.",
+                )
+            )
+
+        # Generate meme
+        meme_image = generate_meme_image_from_urls(url_strings)
+
+        if meme_image:
+            logger.info(
+                f"Successfully generated meme from {len(url_strings)} URLs"
+            )
+            return _encode_image(meme_image)
+        else:
+            logger.error(f"Failed to generate meme from URLs: {url_strings}")
+            raise McpError(
+                ErrorData(
+                    code=INTERNAL_ERROR,
+                    message="Failed to generate meme from multiple URLs. This could be due to:\n- Invalid YouTube Music URLs\n- Thumbnail download failures\n- Missing background templates for the specified number of images\n- File system issues",
+                )
+            )
+
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=str(e),
+            )
+        )
+    except Exception as e:
+        logger.error(f"Error generating multiple memes: {e}")
+        raise McpError(
+            ErrorData(
+                code=INTERNAL_ERROR,
+                message=f"An error occurred while generating the meme: {str(e)}",
+            )
+        )
+
+
+# --- Run MCP Server ---
+async def main():
+    """Initialize and run the MCP server"""
+    print(f"🚀 Starting Music Memes MCP server on http://0.0.0.0:7002")
+    await mcp.run_async("streamable-http", host="0.0.0.0", port=7002)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

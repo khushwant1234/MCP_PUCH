@@ -193,6 +193,147 @@ def apply_overlay_transformation_v2(background_path, overlay_paths):
     return output_path
 
 
+def apply_overlay_transformation_image(background_path, overlay_path):
+    """
+    Apply overlay transformation and return PIL Image instead of saving to file.
+    
+    Args:
+        background_path (str): Path to background image
+        overlay_path (str): Path to overlay image
+        
+    Returns:
+        PIL.Image: Generated meme image, or None if generation failed
+    """
+    metadata = read_metadata(background_path)
+    if metadata is None:
+        print("No Metadata present in given background image")
+        return None
+
+    matrix = get_transformation_matrix(metadata=metadata)
+
+    # Open background and overlay images
+    background = Image.open(background_path)
+    overlay = Image.open(overlay_path)
+
+    # Convert overlay to RGBA if it's not already
+    if overlay.mode != "RGBA":
+        overlay = overlay.convert("RGBA")
+
+    # Create a new transparent image with the same size as the background
+    padded_overlay = Image.new("RGBA", background.size, (0, 0, 0, 0))
+
+    # Paste the overlay onto the padded image
+    padded_overlay.paste(overlay, (0, 0), overlay)
+
+    # Convert to numpy array for transformation
+    overlay_array = np.array(padded_overlay)
+
+    # Use ProjectiveTransform instead of AffineTransform
+    tform = transform.ProjectiveTransform(matrix=matrix)
+    transformed_overlay = transform.warp(
+        overlay_array,
+        tform.inverse,
+        order=0,
+        preserve_range=True,
+    )
+    transformed_overlay = transformed_overlay.astype(np.uint8)
+    transformed_img = Image.fromarray(transformed_overlay)
+
+    if has_mask(metadata=metadata):
+        bg_directory = os.path.dirname(background_path)
+        mask_folder_path = os.path.join(bg_directory, "mask")
+        mask_filename = os.path.basename(background_path).split(".")[0] + "__mask.png"
+        mask_path = os.path.join(mask_folder_path, mask_filename)
+
+        mask = Image.open(mask_path)
+        mask = mask.convert("L")
+        padded_mask = Image.new("L", background.size, 0)
+        padded_mask.paste(mask, (0, 0), mask)
+        mask_array = np.array(padded_mask)
+        transformed_mask = transform.warp(
+            mask_array,
+            tform.inverse,
+            order=0,
+            preserve_range=True,
+        )
+        transformed_mask = transformed_mask.astype(np.uint8)
+        transformed_mask_image = Image.fromarray(transformed_mask, mode="L")
+
+        transformed_img = Image.composite(
+            transformed_img,
+            Image.new("RGBA", transformed_img.size, (0, 0, 0, 0)),
+            transformed_mask_image,
+        )
+
+    try:
+        background.paste(transformed_img, (0, 0), transformed_img)
+        return background
+    except Exception as e:
+        print(f"Error compositing images: {e}")
+        return None
+
+
+def apply_overlay_transformation_v2_image(background_path, overlay_paths):
+    """
+    Apply overlay transformation for multiple overlays and return PIL Image instead of saving to file.
+    
+    Args:
+        background_path (str): Path to background image
+        overlay_paths (list): List of paths to overlay images
+        
+    Returns:
+        PIL.Image: Generated meme image, or None if generation failed
+    """
+    metadata = read_metadata(background_path)
+    if metadata is None:
+        print("No Metadata present in given background image")
+        return None
+    transformation_matrices = get_transformation_matrices(metadata=metadata)
+
+    if len(transformation_matrices) != len(overlay_paths):
+        print("Incompatible arguments provided")
+        print(f"Number of transformation matrices: {len(transformation_matrices)}")
+        print(f"Number of overlay images: {len(overlay_paths)}")
+        return None
+
+    background = Image.open(background_path)
+    for matrix, overlay_path in zip(transformation_matrices, overlay_paths):
+        # Open background and overlay images
+        overlay = Image.open(overlay_path)
+
+        # Convert overlay to RGBA if it's not already
+        if overlay.mode != "RGBA":
+            overlay = overlay.convert("RGBA")
+
+        # Create a new transparent image with the same size as the background
+        padded_overlay = Image.new("RGBA", background.size, (0, 0, 0, 0))
+
+        # Paste the overlay onto the padded image
+        padded_overlay.paste(overlay, (0, 0), overlay)
+
+        # Convert to numpy array for transformation
+        overlay_array = np.array(padded_overlay)
+
+        # Use ProjectiveTransform instead of AffineTransform
+        tform = transform.ProjectiveTransform(matrix=matrix)
+        transformed_overlay = transform.warp(
+            overlay_array,
+            tform.inverse,
+            order=0,
+            preserve_range=True,
+        )
+        transformed_overlay = transformed_overlay.astype(np.uint8)
+        transformed_img = Image.fromarray(transformed_overlay)
+
+        try:
+            background.paste(transformed_img, (0, 0), transformed_img)
+        except Exception as e:
+            print(f"Error pasting overlay {overlay_path} on background {background_path}: {e}")
+            return None
+
+    return background
+
+
 if __name__ == "__main__":
     background = "assets/background/2/500summer-2.png"
     overlays = ["assets/overlay/helloworld.jpg", "assets/overlay/-MlfPaA9EIqt5KEa.jpg"]
