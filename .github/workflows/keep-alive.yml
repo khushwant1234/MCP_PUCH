@@ -9,20 +9,18 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Send request to Render server
+      - name: Ping Render servers
         run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://mcp-puch-80eg.onrender.com/mcp/)
-          echo "Pinged YouTube Tool server, received status code: $response"
-          if [ "$response" -ne 200 ]; then
+          # YouTube Tool server
+          yt_response=$(curl -s -o /dev/null -w "%{http_code}" https://mcp-puch-80eg.onrender.com/mcp/)
+          echo "Pinged YouTube Tool server, received status code: $yt_response"
+          if [ "$yt_response" -ne 200 ]; then
             echo "Server (YouTube Tool) might be down!"
-            # Optionally, you can add more actions here, like sending a notification.
-          fi
-        run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" run: |
-          response=$(curl -s -o /dev/null -w "%{http_code}" https://emceepee-music-memes.onrender.com/mcp/)
-          echo "Pinged Music Memes server, received status code: $response"
-          if [ "$response" -ne 200 ]; then
-            echo "Server (Music Memes Tool) might be down!"
-            # Optionally, you can add more actions here, like sending a notification.
           fi
 
+          # Music Memes server
+          mm_response=$(curl -s -o /dev/null -w "%{http_code}" https://emceepee-music-memes.onrender.com/mcp/)
+          echo "Pinged Music Memes server, received status code: $mm_response"
+          if [ "$mm_response" -ne 200 ]; then
+            echo "Server (Music Memes Tool) might be down!"
+          fi
