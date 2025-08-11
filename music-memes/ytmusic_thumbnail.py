@@ -24,7 +24,7 @@ def get_ytmusic_thumbnail(url: str) -> str | None:
     """Get the thumbnail of a song, playlist, or album using its youtube music url
 
     Args:
-        link (str): YouTube Music url to the song
+        url (str): YouTube Music url to the song
 
     Returns:
         str | None: path to the downloaded thumbail image file
@@ -37,9 +37,11 @@ def get_ytmusic_thumbnail(url: str) -> str | None:
     # print(f"soup: {soup.prettify()}")
     title_tags = soup.find_all("title")  # ytmusic returns two title tags in html
 
+    thumbnail_url = None
     if "Your browser is deprecated" in str(title_tags[0]):
         meta = soup.find("meta", {"property": "og:image"})
-        thumbnail_url = meta.get("content", None)
+        if meta:
+            thumbnail_url = meta.get("content", None)
 
     if thumbnail_url is not None:
         rr = requests.get(thumbnail_url)
@@ -58,6 +60,8 @@ def get_ytmusic_thumbnail(url: str) -> str | None:
                 return save_path
             except:
                 return None
+    
+    return None  # Return None if thumbnail_url is None
 
 
 if __name__ == "__main__":

@@ -16,8 +16,15 @@ from dotenv import load_dotenv
 # Import the music memes functionality
 try:
     from app import (
+        generate_meme_image_from_url,
+        generate_meme_image_from_urls,
         generate_meme_image_from_ytmusic_url,
         generate_meme_image_from_ytmusic_urls,
+        generate_meme_image_from_spotify_url,
+        generate_meme_image_from_spotify_urls,
+        generate_meme_image_from_youtube_url,
+        generate_meme_image_from_youtube_urls,
+        detect_platform,
     )
 except ImportError:
     # If running from different directory, try absolute imports
@@ -26,8 +33,15 @@ except ImportError:
 
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     from app import (
+        generate_meme_image_from_url,
+        generate_meme_image_from_urls,
         generate_meme_image_from_ytmusic_url,
         generate_meme_image_from_ytmusic_urls,
+        generate_meme_image_from_spotify_url,
+        generate_meme_image_from_spotify_urls,
+        generate_meme_image_from_youtube_url,
+        generate_meme_image_from_youtube_urls,
+        detect_platform,
     )
 
 load_dotenv()
@@ -102,14 +116,16 @@ async def about() -> dict[str, str]:
     server_name = "Music Memes MCP Server"
     server_description = dedent(
         """
-        This MCP server creates music memes by generating composite images from YouTube Music URLs.
-        It downloads thumbnails from YouTube Music and overlays them onto background templates to create meme-style images.
+        This MCP server creates music memes by generating composite images from music URLs.
+        It automatically detects the platform and downloads thumbnails from YouTube Music, Spotify, and YouTube,
+        then overlays them onto background templates to create meme-style images.
 
         Features:
-        - Generate memes from single YouTube Music URLs
-        - Generate memes from multiple YouTube Music URLs (up to 5)
-        - Automatic thumbnail extraction and image composition
-        - Random background selection for visual variety
+        - Generate memes from single music URLs (YT Music, Spotify, YouTube)
+        - Generate memes from multiple music URLs (up to 5, mixed platforms supported)
+        - Automatic platform detection and thumbnail extraction
+        - Image composition with random background selection
+        - Support for mixed platform URLs in a single meme
         """
     )
 
@@ -119,10 +135,12 @@ async def about() -> dict[str, str]:
 # --- Tool: Single Meme Generation ---
 SingleMemeToolDescription = RichToolDescription(
     description="""
-    Generate a meme image from a single YouTube Music URL. Downloads the thumbnail and overlays it onto a random background template.
+    Generate a meme image from a single music URL. Automatically detects platform (YouTube Music, Spotify, YouTube) 
+    and downloads the thumbnail, then overlays it onto a random background template.
     """,
     use_when="""
-    Use this when the user provides a single YouTube Music URL and wants to create a meme image from it.
+    Use this when the user provides a single music URL (from YouTube Music, Spotify, or YouTube) 
+    and wants to create a meme image from it.
     """,
     side_effects="""
     Downloads thumbnail image, creates composite image, saves to outputs directory.
@@ -133,18 +151,22 @@ SingleMemeToolDescription = RichToolDescription(
 @mcp.tool(description=SingleMemeToolDescription.model_dump_json())
 async def generate_single_meme(
     url: Annotated[
-        AnyUrl, Field(description="YouTube Music URL for a song, album, or playlist")
+        AnyUrl, Field(description="Music URL for a song, album, or playlist (YouTube Music, Spotify, or YouTube)")
     ],
 ) -> ImageContent:
-    """Generate a meme image from a single YouTube Music URL."""
+    """Generate a meme image from a single music URL (auto-detects platform)."""
     try:
         logger.info(f"Generating meme from single URL: {url}")
 
         # Convert URL to string format
         url_str = str(url)
+        
+        # Detect platform
+        platform = detect_platform(url_str)
+        logger.info(f"Detected platform: {platform}")
 
-        # Generate meme
-        meme_image = generate_meme_image_from_ytmusic_url(url_str)
+        # Generate meme using the generic function
+        meme_image = generate_meme_image_from_url(url_str)
 
         if meme_image:
             logger.info(f"Successfully generated meme from URL: {url_str}")
@@ -154,7 +176,7 @@ async def generate_single_meme(
             raise McpError(
                 ErrorData(
                     code=INTERNAL_ERROR,
-                    message="Failed to generate meme. This could be due to:\n- Invalid YouTube Music URL\n- Thumbnail download failure\n- Missing background templates\n- File system issues",
+                    message=f"Failed to generate meme from {platform} URL. This could be due to:\n- Invalid or unsupported URL\n- Thumbnail download failure\n- Missing background templates\n- File system issues",
                 )
             )
 
@@ -171,10 +193,13 @@ async def generate_single_meme(
 # --- Tool: Multiple Memes Generation ---
 MultipleMemeToolDescription = RichToolDescription(
     description="""
-    Generate a single meme image from multiple YouTube Music URLs (maximum 5). Downloads thumbnails from all URLs and composites them onto a background template designed for multiple images.
+    Generate a single meme image from multiple music URLs (maximum 5). Automatically detects platforms 
+    (YouTube Music, Spotify, YouTube) for each URL, downloads thumbnails, and composites them onto 
+    a background template designed for multiple images. Mixed platforms are supported.
     """,
     use_when="""
-    Use this when the user provides multiple YouTube Music URLs (2-5) and wants to create a single meme image containing all of them.
+    Use this when the user provides multiple music URLs (2-5) from any supported platform 
+    and wants to create a single meme image containing all of them.
     """,
     side_effects="""
     Downloads multiple thumbnail images, creates single composite image with all thumbnails, saves to outputs directory.
@@ -187,53 +212,38 @@ async def generate_multiple_memes(
     urls: Annotated[
         List[AnyUrl],
         Field(
-            description="List of YouTube Music URLs (maximum 5)",
+            description="List of music URLs (maximum 5) from YouTube Music, Spotify, or YouTube",
             min_length=1,
             max_length=5,
         ),
     ],
 ) -> ImageContent:
-    """Generate a single meme image from multiple YouTube Music URLs (max 5)."""
+    """Generate a single meme image from multiple music URLs (max 5, mixed platforms supported)."""
     try:
         logger.info(f"Generating meme from {len(urls)} URLs: {urls}")
 
-        # Convert URLs to string format
-        url_strings = [str(url) for url in urls]
+        # Convert URLs to string format and detect platforms
+        url_strs = [str(url) for url in urls]
+        platforms = [detect_platform(url) for url in url_strs]
+        logger.info(f"Detected platforms: {platforms}")
 
-        # Validate input
-        if len(url_strings) > 5:
-            raise McpError(
-                ErrorData(
-                    code=INTERNAL_ERROR,
-                    message="Maximum 5 URLs allowed for meme generation.",
-                )
-            )
-
-        if len(url_strings) == 0:
-            raise McpError(
-                ErrorData(
-                    code=INTERNAL_ERROR,
-                    message="At least 1 URL is required for meme generation.",
-                )
-            )
-
-        # Generate meme
-        meme_image = generate_meme_image_from_ytmusic_urls(url_strings)
+        # Generate meme using the generic function
+        meme_image = generate_meme_image_from_urls(url_strs)
 
         if meme_image:
-            logger.info(f"Successfully generated meme from {len(url_strings)} URLs")
+            logger.info(f"Successfully generated meme from {len(url_strs)} URLs")
             return _encode_image(meme_image)
         else:
-            logger.error(f"Failed to generate meme from URLs: {url_strings}")
+            logger.error(f"Failed to generate meme from URLs: {url_strs}")
             raise McpError(
                 ErrorData(
                     code=INTERNAL_ERROR,
-                    message="Failed to generate meme from multiple URLs. This could be due to:\n- Invalid YouTube Music URLs\n- Thumbnail download failures\n- Missing background templates for the specified number of images\n- File system issues",
+                    message=f"Failed to generate meme from multiple URLs. This could be due to:\n- Invalid or unsupported URLs\n- Thumbnail download failures\n- Missing background templates for {len(url_strs)} images\n- File system issues",
                 )
             )
 
     except ValueError as e:
-        logger.error(f"Validation error: {e}")
+        logger.error(f"Invalid input for multiple memes: {e}")
         raise McpError(
             ErrorData(
                 code=INTERNAL_ERROR,
