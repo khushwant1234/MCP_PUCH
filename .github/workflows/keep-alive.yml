@@ -12,8 +12,17 @@ jobs:
       - name: Send request to Render server
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" https://mcp-puch-80eg.onrender.com/mcp/)
-          echo "Pinged server, received status code: $response"
+          echo "Pinged YouTube Tool server, received status code: $response"
           if [ "$response" -ne 200 ]; then
-            echo "Server might be down!"
+            echo "Server (YouTube Tool) might be down!"
             # Optionally, you can add more actions here, like sending a notification.
           fi
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://emceepee-music-memes.onrender.com/mcp/)
+          echo "Pinged Music Memes server, received status code: $response"
+          if [ "$response" -ne 200 ]; then
+            echo "Server (Music Memes Tool) might be down!"
+            # Optionally, you can add more actions here, like sending a notification.
+          fi
+
