@@ -22,9 +22,9 @@ def get_spotify_thumbnail(url: str) -> None | str:
     print(id)
     save_name = id
     save_path = os.path.join(
-        "./music-memes/assets/thumbnails/spotify", f"{save_name}.jpg"
+        "./batemanMusic/assets/thumbnails/spotify", f"{save_name}.jpg"
     )
-    os.makedirs("./music-memes/assets/thumbnails/spotify", exist_ok=True)
+    os.makedirs("./batemanMusic/assets/thumbnails/spotify", exist_ok=True)
 
     # check if this thumbnail is already available, and return it if it exists
     try:

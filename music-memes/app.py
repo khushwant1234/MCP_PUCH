@@ -1,11 +1,16 @@
 import os
 import random
 from PIL import Image
-from maker import apply_overlay_transformation, apply_overlay_transformation_v2, apply_overlay_transformation_image, apply_overlay_transformation_v2_image
+from maker import (
+    apply_overlay_transformation,
+    apply_overlay_transformation_v2,
+    apply_overlay_transformation_image,
+    apply_overlay_transformation_v2_image,
+)
 from ytmusic_thumbnail import get_ytmusic_thumbnail
 
 
-def generate_meme_image_from_url(ytmusic_url):
+def generate_meme_image_from_ytmusic_url(ytmusic_url):
     """
     Generate a meme image from a single YT Music URL.
 
@@ -25,8 +30,11 @@ def generate_meme_image_from_url(ytmusic_url):
     if not os.path.exists(backgrounds_directory):
         return None
 
-    background_files = [f for f in os.listdir(backgrounds_directory)
-                       if os.path.isfile(os.path.join(backgrounds_directory, f))]
+    background_files = [
+        f
+        for f in os.listdir(backgrounds_directory)
+        if os.path.isfile(os.path.join(backgrounds_directory, f))
+    ]
 
     if not background_files:
         return None
@@ -39,7 +47,7 @@ def generate_meme_image_from_url(ytmusic_url):
     return apply_overlay_transformation_image(background_path, overlay_path)
 
 
-def generate_meme_image_from_urls(ytmusic_urls):
+def generate_meme_image_from_ytmusic_urls(ytmusic_urls):
     """
     Generate a single meme image from a list of YT Music URLs (max 5).
 
@@ -56,7 +64,9 @@ def generate_meme_image_from_urls(ytmusic_urls):
         return None
 
     # Get thumbnails from URLs
-    overlay_paths = [path for url in ytmusic_urls if (path := get_ytmusic_thumbnail(url)) is not None]
+    overlay_paths = [
+        path for url in ytmusic_urls if (path := get_ytmusic_thumbnail(url)) is not None
+    ]
 
     if not overlay_paths:
         return None
@@ -68,8 +78,11 @@ def generate_meme_image_from_urls(ytmusic_urls):
         return None
 
     # Get random background
-    background_files = [f for f in os.listdir(backgrounds_directory)
-                       if os.path.isfile(os.path.join(backgrounds_directory, f))]
+    background_files = [
+        f
+        for f in os.listdir(backgrounds_directory)
+        if os.path.isfile(os.path.join(backgrounds_directory, f))
+    ]
 
     if not background_files:
         return None

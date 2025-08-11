@@ -15,14 +15,20 @@ from dotenv import load_dotenv
 
 # Import the music memes functionality
 try:
-    from app import generate_meme_image_from_url, generate_meme_image_from_urls
+    from app import (
+        generate_meme_image_from_ytmusic_url,
+        generate_meme_image_from_ytmusic_urls,
+    )
 except ImportError:
     # If running from different directory, try absolute imports
     import sys
     import os
 
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from app import generate_meme_image_from_url, generate_meme_image_from_urls
+    from app import (
+        generate_meme_image_from_ytmusic_url,
+        generate_meme_image_from_ytmusic_urls,
+    )
 
 load_dotenv()
 
@@ -42,6 +48,7 @@ def _encode_image(image) -> ImageContent:
     Encodes a PIL Image to a format compatible with ImageContent.
     """
     import io
+
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     img_bytes = buffer.getvalue()
@@ -137,7 +144,7 @@ async def generate_single_meme(
         url_str = str(url)
 
         # Generate meme
-        meme_image = generate_meme_image_from_url(url_str)
+        meme_image = generate_meme_image_from_ytmusic_url(url_str)
 
         if meme_image:
             logger.info(f"Successfully generated meme from URL: {url_str}")
@@ -211,12 +218,10 @@ async def generate_multiple_memes(
             )
 
         # Generate meme
-        meme_image = generate_meme_image_from_urls(url_strings)
+        meme_image = generate_meme_image_from_ytmusic_urls(url_strings)
 
         if meme_image:
-            logger.info(
-                f"Successfully generated meme from {len(url_strings)} URLs"
-            )
+            logger.info(f"Successfully generated meme from {len(url_strings)} URLs")
             return _encode_image(meme_image)
         else:
             logger.error(f"Failed to generate meme from URLs: {url_strings}")
