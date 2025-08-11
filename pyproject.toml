@@ -14,6 +14,8 @@ dependencies = [
     "pillow>=11.3.0",
     "python-dotenv>=1.1.1",
     "readabilipy>=0.3.0",
+    "scikit-image>=0.25.2",
+    "spotipy>=2.25.1",
     "youtube-transcript-api>=1.2.2",
     "yt-dlp[curl-cffi,default]>=2025.7.21",
 ]
