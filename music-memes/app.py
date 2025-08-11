@@ -1,39 +1,95 @@
-import streamlit as st
 import os
+import random
 from maker import apply_overlay_transformation, apply_overlay_transformation_v2
 from ytmusic_thumbnail import get_ytmusic_thumbnail
 
-st.set_page_config(page_title="Music Memes", page_icon=":headphones:", layout="wide")
-st.title("Music Memes")
 
-n = st.slider("Number of cover arts", min_value=1, max_value=5, value=1, step=1)
+def generate_meme_from_url(ytmusic_url):
+    """
+    Generate a meme image from a single YT Music URL.
 
-urls = []
-for i in range(n):
-    if url := st.text_input(label=f"YTMusic URL of song/playlist {i+1}"):
-        urls.append(url)
+    Args:
+        ytmusic_url (str): YT Music URL for a song or playlist
+
+    Returns:
+        str: Path to the generated meme image, or None if generation failed
+    """
+    # Get thumbnail from URL
+    overlay_path = get_ytmusic_thumbnail(ytmusic_url)
+    if not overlay_path:
+        return None
+
+    # Get random background for single image
+    backgrounds_directory = os.path.join("music-memes", "assets", "background", "1")
+    if not os.path.exists(backgrounds_directory):
+        return None
+
+    background_files = [f for f in os.listdir(backgrounds_directory)
+                       if os.path.isfile(os.path.join(backgrounds_directory, f))]
+
+    if not background_files:
+        return None
+
+    # Pick random background
+    background_filename = random.choice(background_files)
+    background_path = os.path.join(backgrounds_directory, background_filename)
+
+    # Generate meme
+    return apply_overlay_transformation(background_path, overlay_path)
 
 
-if st.button(label="Generate Memes", disabled=len(urls) != n, type="primary"):
-    overlay_paths = [path for url in urls if (path := get_ytmusic_thumbnail(url)) is not None]
-    print(overlay_paths)
-    backgrounds_directory = os.path.join("assets", "background", str(n))
-    print(backgrounds_directory)
-    for filename in os.listdir(backgrounds_directory):
-        # print(filename)
-        if os.path.isfile(os.path.join(backgrounds_directory, filename)):
-            print(filename)
-            background_path = os.path.join(backgrounds_directory, filename)
-            print(f"using background image: {background_path}")
-            output_image = None
-            if n == 1:
-                if img_path := apply_overlay_transformation(background_path, overlay_paths[0]):
-                    print(img_path)
-                    output_image = img_path
+def generate_meme_from_urls(ytmusic_urls):
+    """
+    Generate a single meme image from a list of YT Music URLs (max 5).
 
-            elif img_path := apply_overlay_transformation_v2(background_path, overlay_paths):
-                print(img_path)
-                output_image = img_path
+    Args:
+        ytmusic_urls (list): List of YT Music URLs (max length 5)
 
-            if output_image:
-                st.image(img_path, width=512, use_column_width="auto")
+    Returns:
+        str: Path to the generated meme image, or None if generation failed
+    """
+    if len(ytmusic_urls) > 5:
+        raise ValueError("Maximum 5 URLs allowed")
+
+    if len(ytmusic_urls) == 0:
+        return None
+
+    # Get thumbnails from URLs
+    overlay_paths = [path for url in ytmusic_urls if (path := get_ytmusic_thumbnail(url)) is not None]
+
+    if not overlay_paths:
+        return None
+
+    n = len(overlay_paths)
+    backgrounds_directory = os.path.join("music-memes", "assets", "background", str(n))
+
+    if not os.path.exists(backgrounds_directory):
+        return None
+
+    # Get random background
+    background_files = [f for f in os.listdir(backgrounds_directory)
+                       if os.path.isfile(os.path.join(backgrounds_directory, f))]
+
+    if not background_files:
+        return None
+
+    background_filename = random.choice(background_files)
+    background_path = os.path.join(backgrounds_directory, background_filename)
+
+    # Generate single meme
+    if n == 1:
+        return apply_overlay_transformation(background_path, overlay_paths[0])
+    else:
+        return apply_overlay_transformation_v2(background_path, overlay_paths)
+
+
+if __name__ == "__main__":
+    # Example usage
+    # url = "https://music.youtube.com/watch?v=nyuo9-OjNNg&si=mOMlPjr16WNVxWto"
+    # print(generate_meme_from_url(url))
+
+    urls = [
+        "https://music.youtube.com/watch?v=nyuo9-OjNNg&si=mOMlPjr16WNVxWto",
+        "https://music.youtube.com/watch?v=sEetXo3R-aM&si=zEbt0ZqGo_HHwQJ8",
+    ]
+    print(generate_meme_from_urls(urls))

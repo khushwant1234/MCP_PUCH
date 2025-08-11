@@ -91,8 +91,8 @@ def apply_overlay_transformation(background_path, overlay_path):
     background_filename = os.path.basename(background_path).split(".")[0]
 
     output_name = f"{overlay_filename}_o_{background_filename}_t_{current_time}"
-    output_path = os.path.join("outputs", output_name)
-    os.makedirs("outputs", exist_ok=True)
+    output_path = os.path.join("music-memes", "outputs", output_name)
+    os.makedirs(os.path.join("music-memes", "outputs"), exist_ok=True)
 
     if has_mask(metadata=metadata):
         bg_directory = os.path.dirname(background_path)
@@ -186,8 +186,8 @@ def apply_overlay_transformation_v2(background_path, overlay_paths):
     background_filename = os.path.basename(background_path).split(".")[0]
     print(f"background_filename: {background_filename}")
     output_name = f"{len(overlay_paths)}_o_{background_filename}_t_{current_time}"
-    output_path = os.path.join("outputs", output_name)
-    os.makedirs("outputs", exist_ok=True)
+    output_path = os.path.join("music-memes", "outputs", output_name)
+    os.makedirs(os.path.join("music-memes", "outputs"), exist_ok=True)
 
     background.save(output_path, "PNG")
     return output_path
