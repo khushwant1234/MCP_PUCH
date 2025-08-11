@@ -1,11 +1,7 @@
 import os
 import random
-import re
 from urllib.parse import urlparse
-from PIL import Image
 from maker import (
-    apply_overlay_transformation,
-    apply_overlay_transformation_v2,
     apply_overlay_transformation_image,
     apply_overlay_transformation_v2_image,
 )
@@ -17,16 +13,16 @@ from youtube_thumbnail import get_yt_thumbnail
 def detect_platform(url):
     """
     Detect the music platform from a URL.
-    
+
     Args:
         url (str): The URL to analyze
-        
+
     Returns:
         str: One of 'ytmusic', 'spotify', 'youtube', or 'unknown'
     """
     parsed = urlparse(url.lower())
     domain = parsed.netloc.replace('www.', '').replace('m.', '')
-    
+
     if 'music.youtube.com' in domain:
         return 'ytmusic'
     elif 'open.spotify.com' in domain:
@@ -40,15 +36,15 @@ def detect_platform(url):
 def get_thumbnail_by_platform(url):
     """
     Get thumbnail based on the detected platform.
-    
+
     Args:
         url (str): The URL to get thumbnail for
-        
+
     Returns:
         str or None: Path to the downloaded thumbnail, or None if failed
     """
     platform = detect_platform(url)
-    
+
     if platform == 'ytmusic':
         return get_ytmusic_thumbnail(url)
     elif platform == 'spotify':
@@ -62,15 +58,15 @@ def get_thumbnail_by_platform(url):
 def get_random_background(num_overlays):
     """
     Get a random background image for the specified number of overlays.
-    
+
     Args:
         num_overlays (int): Number of overlay images (1-5)
-        
+
     Returns:
         str or None: Path to the background image, or None if not found
     """
     backgrounds_directory = os.path.join("music-memes", "assets", "background", str(num_overlays))
-    
+
     if not os.path.exists(backgrounds_directory):
         return None
 
@@ -178,7 +174,7 @@ def generate_meme_image_from_urls(urls):
 
     n = len(overlay_paths)
     background_path = get_random_background(n)
-    
+
     if not background_path:
         return None
 
