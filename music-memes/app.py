@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from urllib.parse import urlparse
 from maker import (
     apply_overlay_transformation_image,
@@ -79,6 +80,8 @@ def get_random_background(num_overlays):
     if not background_files:
         return None
 
+    # Seed random with current time for better randomness
+    random.seed(time.time())
     background_filename = random.choice(background_files)
     return os.path.join(backgrounds_directory, background_filename)
 
