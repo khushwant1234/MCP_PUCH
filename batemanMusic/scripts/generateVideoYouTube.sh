@@ -11,11 +11,11 @@ fi
 # To get the current time in the format Hour:Minute:Second
 currentTime=$(date +"%H-%M-%S")
 
-batemanVideoPath="./assets/bateman_original.mp4"
+batemanVideoPath="./batemanMusic/assets/bateman_original.mp4"
 outputFileName="ytmusic_$currentTime.mp4"
-outputFilePath="./outputs/youtube/$outputFileName"
+outputFilePath="./batemanMusic/outputs/youtube/$outputFileName"
 # create directory if it doesn't exist already
-[ -d "./outputs/youtube" ] || mkdir -p "./outputs/youtube"
+[ -d "./batemanMusic/outputs/youtube" ] || mkdir -p "./batemanMusic/outputs/youtube"
 
 # youtube thumbnails are allowed to be max 1280x720, and are almost always that resolution
 callFFMPEG() {

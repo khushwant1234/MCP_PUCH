@@ -1,5 +1,6 @@
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+
 # from spotipy.oauth2 import SpotifyOAuth
 from dotenv import load_dotenv
 
@@ -10,6 +11,7 @@ from PIL import Image
 
 load_dotenv()
 
+
 def get_spotify_thumbnail(url: str) -> None | str:
     # spotify = spotipy.Spotify(auth_manager=SpotifyOAuth())
     spotify = spotipy.Spotify(auth_manager=SpotifyClientCredentials())
@@ -19,8 +21,10 @@ def get_spotify_thumbnail(url: str) -> None | str:
     id = result["album"]["artists"][0]["id"]
     print(id)
     save_name = id
-    save_path = os.path.join("./assets/thumbnails/spotify", f"{save_name}.jpg")
-    os.makedirs("./assets/thumbnails/spotify", exist_ok=True)
+    save_path = os.path.join(
+        "./batemanMusic/assets/thumbnails/spotify", f"{save_name}.jpg"
+    )
+    os.makedirs("./batemanMusic/assets/thumbnails/spotify", exist_ok=True)
 
     # check if this thumbnail is already available, and return it if it exists
     try:
@@ -42,4 +46,6 @@ def get_spotify_thumbnail(url: str) -> None | str:
 
 
 if __name__ == "__main__":
-    get_spotify_thumbnail("https://open.spotify.com/track/1gqkRc9WtOpnGIqxf2Hvzr?si=bd0351766c9b496f")
+    get_spotify_thumbnail(
+        "https://open.spotify.com/track/1gqkRc9WtOpnGIqxf2Hvzr?si=bd0351766c9b496f"
+    )

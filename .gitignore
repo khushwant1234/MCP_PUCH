@@ -1,7 +1,7 @@
 *.env
 *.cache
 
-/assets/
+*/assets/
 /audio/
 
 !/assets/bateman_final.mp4
@@ -9,3 +9,8 @@
 !/assets/bateman_cropped.mp4
 
 /outputs
+
+overlay/
+outputs/
+.vscode/settings.json
+*.pyc

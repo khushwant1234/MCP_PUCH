@@ -6,6 +6,7 @@ import re
 
 # youtube music thumbnails can also be grabbed in this manner
 
+
 # this function is taken from https://gist.github.com/rodrigoborgesdeoliveira/987683cfbfcc8d800192da1e73adc486?permalink_comment_id=5097394#gistcomment-5097394
 def get_youtube_video_id_by_url(url):
     regex = r"^((https?://(?:www\.)?(?:m\.)?youtube\.com))/((?:oembed\?url=https?%3A//(?:www\.)youtube.com/watch\?(?:v%3D)(?P<video_id_1>[\w\-]{10,20})&format=json)|(?:attribution_link\?a=.*watch(?:%3Fv%3D|%3Fv%3D)(?P<video_id_2>[\w\-]{10,20}))(?:%26feature.*))|(https?:)?(\/\/)?((www\.|m\.)?youtube(-nocookie)?\.com\/((watch)?\?(app=desktop&)?(feature=\w*&)?v=|embed\/|v\/|e\/)|youtu\.be\/)(?P<video_id_3>[\w\-]{10,20})"
@@ -32,8 +33,10 @@ def get_yt_thumbnail(url: str) -> None | str:
     """
     video_id: str = get_youtube_video_id_by_url(url)
     save_name = video_id
-    save_path = os.path.join("./assets/thumbnails/youtube", f"{save_name}.jpg")
-    os.makedirs("./assets/thumbnails/youtube", exist_ok=True)
+    save_path = os.path.join(
+        "./batemanMusic/assets/thumbnails/youtube", f"{save_name}.jpg"
+    )
+    os.makedirs("./batemanMusic/assets/thumbnails/youtube", exist_ok=True)
 
     # check if this thumbnail is already available, and return it if it exists
     try:
@@ -56,6 +59,4 @@ def get_yt_thumbnail(url: str) -> None | str:
 
 
 if __name__ == "__main__":
-    get_yt_thumbnail(
-        "https://www.youtube.com/watch?v=6CHs4x2uqcQ"
-    )
+    get_yt_thumbnail("https://www.youtube.com/watch?v=6CHs4x2uqcQ")

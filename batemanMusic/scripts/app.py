@@ -105,9 +105,9 @@ def generate_output_video_youtube(bg_image_path: str) -> str:
 #         return st.session_state["song_state"][url]
 
 #     # spotify_dl downloads the song, and outputs a lot of things on stdout, among them is save location
-#     os.makedirs("./audio/spotify", exist_ok=True)
+#     os.makedirs("./batemanMusic/audio/spotify", exist_ok=True)
 #     result = subprocess.run(
-#         ["spotify_dl", "-l", url, "-o", "./audio/spotify", "-m"], capture_output=True
+#         ["spotify_dl", "-l", url, "-o", "./batemanMusic/audio/spotify", "-m"], capture_output=True
 #     )
 #     pattern = r"\[download\] Destination: (.+?)\n|\[download\] (.+?) has already been downloaded\n"
 #     match = re.search(pattern, result.stdout.decode("utf-8"))
@@ -134,11 +134,11 @@ def download_song_youtube(url: str) -> str:
         if d["status"] == "finished":
             output_location["filename"] = d["filename"]
 
-    os.makedirs("./audio/youtube", exist_ok=True)
+    os.makedirs("./batemanMusic/audio/youtube", exist_ok=True)
     urls = [url]
 
     ydl_opts = {
-        "format": "m4a/bestaudio/best",
+        "format": "m4a/bestbatemanMusic/audio/best",
         "postprocessors": [
             {  # Extract audio using ffmpeg
                 "key": "FFmpegExtractAudio",
@@ -146,7 +146,7 @@ def download_song_youtube(url: str) -> str:
             }
         ],
         "outtmpl": os.path.join(
-            "./audio/youtube", "%(title)s.%(ext)s"
+            "./batemanMusic/audio/youtube", "%(title)s.%(ext)s"
         ),  # Set the output directory and filename template
         "progress_hooks": [hook],
     }
@@ -180,11 +180,11 @@ def download_song_ytmusic(url: str) -> str:
         if d["status"] == "finished":
             output_location["filename"] = d["filename"]
 
-    os.makedirs("./audio/ytmusic", exist_ok=True)
+    os.makedirs("./batemanMusic/audio/ytmusic", exist_ok=True)
     urls = [url]
 
     ydl_opts = {
-        "format": "m4a/bestaudio/best",
+        "format": "m4a/bestbatemanMusic/audio/best",
         "postprocessors": [
             {  # Extract audio using ffmpeg
                 "key": "FFmpegExtractAudio",
@@ -192,7 +192,7 @@ def download_song_ytmusic(url: str) -> str:
             }
         ],
         "outtmpl": os.path.join(
-            "./audio/ytmusic", "%(title)s.%(ext)s"
+            "./batemanMusic/audio/ytmusic", "%(title)s.%(ext)s"
         ),  # Set the output directory and filename template
         "progress_hooks": [hook],
     }
@@ -286,7 +286,9 @@ def get_final_video_ytmusic(ytmusic_url: str) -> str:
     delay_in_seconds = 0
     if song_path is not None:
         try:
-            delay_in_seconds = get_song_duration(song_path) - random.randint(0, get_song_duration(song_path))
+            delay_in_seconds = get_song_duration(song_path) - random.randint(
+                0, get_song_duration(song_path)
+            )
         except Exception as e:
             delay_in_seconds = 0
 
@@ -326,10 +328,10 @@ def get_final_video_youtube(youtube_url: str) -> str:
 
 if __name__ == "__main__":
     # get_song_duration(
-    #     "/home/malik/Documents/Programming/puch/emceepee/audio/youtube/Kanye West - Good Morning.m4a"
+    #     "/home/malik/Documents/Programming/puch/emceepee/batemanMusic/audio/youtube/Kanye West - Good Morning.m4a"
     # )
     print(
         get_final_video_ytmusic(
-            "https://music.youtube.com/watch?v=COz9lDCFHjw&si=39V5plEKkelujOiI"
+            "https://music.youtube.com/watch?v=qU9mHegkTc4"
         )
     )

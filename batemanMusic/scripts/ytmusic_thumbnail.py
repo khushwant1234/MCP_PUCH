@@ -35,7 +35,7 @@ def get_ytmusic_thumbnail(url: str) -> str | None:
 
     soup = BeautifulSoup(r.content, "lxml")
     # print(f"soup: {soup.prettify()}")
-    title_tags = soup.find_all("title") # ytmusic returns two title tags in html
+    title_tags = soup.find_all("title")  # ytmusic returns two title tags in html
 
     if "Your browser is deprecated" in str(title_tags[0]):
         meta = soup.find("meta", {"property": "og:image"})
@@ -47,8 +47,10 @@ def get_ytmusic_thumbnail(url: str) -> str | None:
             return None
 
         save_name = regex.findall(r".*=(.*)", url)[0]  # extract last part of url
-        save_path = os.path.join("./assets/thumbnails/ytmusic", f"{save_name}.jpg")
-        os.makedirs("./assets/thumbnails/ytmusic", exist_ok=True)
+        save_path = os.path.join(
+            "./batemanMusic/assets/thumbnails/ytmusic", f"{save_name}.jpg"
+        )
+        os.makedirs("./batemanMusic/assets/thumbnails/ytmusic", exist_ok=True)
 
         with Image.open(BytesIO(rr.content)) as im:
             try:

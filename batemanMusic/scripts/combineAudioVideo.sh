@@ -15,9 +15,9 @@ fi
 
 currentTime=$(date +"%H-%M-%S")
 outputFileName="combined_$currentTime.mp4"
-outputFilePath="./outputs/combined/$outputFileName"
+outputFilePath="./batemanMusic/outputs/combined/$outputFileName"
 # create directory if it doesn't exist already
-[ -d "./outputs/combined" ] || mkdir -p "./outputs/combined"
+[ -d "./batemanMusic/outputs/combined" ] || mkdir -p "./batemanMusic/outputs/combined"
 
 callFFMPEG() {
 ffmpeg -i $videoPath -ss $delay -i "$audioPath" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest $outputFilePath
