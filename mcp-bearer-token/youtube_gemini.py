@@ -6,6 +6,7 @@ import logging
 import time
 import aiohttp
 import yt_dlp
+from textwrap import dedent
 from enum import Enum
 from typing import Annotated
 from pydantic import Field, BaseModel, AnyUrl
@@ -597,6 +598,19 @@ async def validate() -> str:
     return MY_NUMBER
 
 
+# --- Tool: about (recommended by Puch) ---
+@mcp.tool
+async def about() -> dict[str, str]:
+    server_name = "YouTube MCP Server"
+    server_description = dedent(
+        """
+    This MCP server is designed to process YouTube video URLs for transcription and insights. You can use it to transcribe videos, summarize content, and ask questions about the video. You can even use timestamps in your queries to focus on specific parts of the video.
+    """
+    )
+
+    return {"name": server_name, "description": server_description}
+
+
 # --- Tool: YouTube ---
 YouTubeToolDescription = RichToolDescription(
     description="""
@@ -631,8 +645,7 @@ async def youtube_tool(
         ),
     ] = "Describe the video content in 5-10 bulleted points. Display the EXACT response from this tool directly to the user without any interpretation or summary. The tool returns the complete transcription/analysis that must be shown verbatim.",
 ) -> str:
-    """Transcribe and analyze a YouTube video. Ask questions about it.
-    """
+    """Transcribe and analyze a YouTube video. Ask questions about it."""
     tool_start_time = time.time()
     logger.info(f"[{time.strftime('%H:%M:%S')}] Starting YouTube Tool for URL: {url}")
     try:
