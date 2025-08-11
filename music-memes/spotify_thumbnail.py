@@ -39,7 +39,17 @@ def get_spotify_thumbnail(url: str) -> None | str:
         return None
     with Image.open(BytesIO(rr.content)) as im:
         try:
-            im.save(save_path, format="JPEG")
+            # Crop from center to make it square, then resize to 512x512
+            width, height = im.size
+            size = min(width, height)
+            left = (width - size) // 2
+            top = (height - size) // 2
+            right = left + size
+            bottom = top + size
+            
+            cropped_im = im.crop((left, top, right, bottom))
+            resized_im = cropped_im.resize((512, 512), Image.Resampling.LANCZOS)
+            resized_im.save(save_path, format="JPEG")
             return save_path
         except:
             return None
